@@ -26,8 +26,13 @@ df_mmv <- read_csv(file_path)
 colnames(df_mmv)[colnames(df_mmv) == "Trunk Flexion @ BR"] <- "Trunk_Flexion_BR"
 colnames(df_mmv)[colnames(df_mmv) == "COM Velocity (X) (MAW to BR)"] <- "COM_VelX_MAWtoBR"
 
+# Only include Trunk_Flexion_BR and COM_VelX_MAWtoBR
 df_mmv_cleaned <- df_mmv %>% 
-  filter(!is.na(Trunk_Flexion_BR) & !is.na(COM_VelX_MAWtoBR))
+  # filter(!is.na(Trunk_Flexion_BR) & !is.na(COM_VelX_MAWtoBR))
+  select(1:10) 
+
+df_mmv_cleaned <- df_mmv_cleaned[complete.cases(df_mmv_cleaned), ]
+ 
 
 # Generate the baseline model (no predictor variables) and test assumptions
 # install.packages("DHARMa")
@@ -58,6 +63,7 @@ plot(baseline1)
 hist(residuals(baseline1), breaks = 30, main = "Residuals Histogram")
 simulationOutput <- simulateResiduals(fittedModel = baseline1) # use DHARMa to test assumptions
 plot(simulationOutput) # plot assumptions
+shapiro.test(residuals(baseline1)) # normality statistics
 
 residuals_baseline1 <- as.data.frame(residuals(baseline1, type = "pearson"))
 residuals_baseline1 <- cbind(residuals_baseline1, df_mmv_cleaned$Player)
@@ -86,12 +92,6 @@ model.comparison(model_1_ris, model_1_ri)
 
 # Compare model_1_ri to baseline
 model.comparison(baseline1, model_1_ri)
-
-# Compare model_1_ri to baseline
-model.comparison(baseline1, model_1_ri)
-# tab_model(baseline1,model_1_ri, show.df = TRUE,
-#          dv.labels = c("Reduced Model", "Final Model"),
-#          file = "Aim 3 - Redcued vs. Full Model Outputs.doc")
 
 
 #####################################################################################################
