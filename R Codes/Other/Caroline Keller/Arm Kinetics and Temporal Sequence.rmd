@@ -1,0 +1,271 @@
+# This code event marks pitching trials, then trims the file from initiation (INI) 
+# to end of follow-through (EFT). Once the file has been event marked, it extracts
+# shoulder and elbow kinetics (shoulder IR torque, shoulder horizontal adduction
+# torque, and elbow varus torque), and temporal sequence of 5 segments (pelvis,
+# shoulder, elbow, wrist, and finger). Sequence values and indices are saved too.
+
+```{r Load the required packages, eval = FALSE}
+library(tidyverse)
+
+```
+
+```{r Import the raw trial file (.txt), extract the file name, and remove the last empty column}
+# Let the user select the file to import
+file_path <- file.choose()
+
+# Extract the file name from the file path
+file_name <- tools::file_path_sans_ext(basename(file_path))
+# file_end <- substr(file_name, nchar(file_name) - 9, nchar(file_name))
+# file_name <- sub("(.*mph).*", "\\1", file_name)
+
+# Read the data
+df <- read.delim(file_path, header = TRUE, skip = 8, check.names = FALSE)
+
+# # Remove the final column in the data if it's empty
+df <- df %>%
+  select(- 28) 
+
+```
+
+```{r Define the sampling rate, then initialise a column for the events, and time}
+# Define sampling rate (Hz)
+SampleRate <- 238.095 # change as necessary
+
+# Create and events column and populate with 0s
+df$Events <- 0
+
+# Create the column "Time (s)" (divide by sampling rate)
+df$`Time (s)` <- df$`Sample #` / SampleRate
+
+df <- df %>%
+  select(Events, `Time (s)`, everything())
+
+```
+
+```{r Define Event - FFC}
+Event_FFC <- which(diff(df$`Event - FFC`) > 20)[1] # adjust threshold as necessary
+plot(df$`Event - FFC`)
+
+```
+
+```{r Define Event - INI}
+Event_INI <- which(df$`Event - INI`[(Event_FFC-360):nrow(df)] > 0.2)[1] # adjust threshold as necessary
+Event_INI <- (Event_FFC - 360) + Event_INI
+plot(df$`Event - INI`)
+
+```
+
+```{r Define Event - MAW}
+Event_MAW <- which(df$`Event - MAW` == min(df$`Event - MAW`[(Event_FFC - 100):nrow(df)], na.rm = TRUE))[1]
+plot(df$`Event - MAW`)
+
+```
+
+
+```{r Define Event - BR}
+Event_BR <- which(df$`Event - BR` == max(df$`Event - BR`, na.rm = TRUE))[1]
+plot(df$`Event - BR`)
+
+```
+```{r Define Event - MER}
+Event_MER <- which(df$`Event - MER` == max(df$`Event - MER`[Event_MAW:Event_BR], na.rm = TRUE))[1]
+plot(df$`Event - MER`)
+
+```
+
+```{r Define Event - EFT}
+# Check if ball release has occurred
+if (!is.na(Event_BR) && Event_BR < nrow(df)) {
+  # Subset the data from ball release to ball release +100
+  subset_data <- df[(Event_BR + 10):(Event_BR + 100), ]
+
+  # Find the index of the row where FT is at its smallest in the subset
+  EFT_index <- which(subset_data$`Event - EFT` == min(subset_data$`Event - EFT`, na.rm = TRUE))[1]
+  
+}
+
+Event_EFT <- (Event_BR + 10) + EFT_index # determine event index in full data frame
+plot(df$`Event - EFT`)
+
+```
+
+```{r Mark each event index in "data" with a '1'}
+# Mark Event_BFC with '1'
+if (!is.na(Event_INI)) {
+  df$Events[Event_INI] <- 1
+}
+
+# Mark Event_FFC with '1'
+if (!is.na(Event_FFC)) {
+  df$Events[Event_FFC] <- 1
+}
+
+# Mark Event_MAW with '1'
+if (!is.na(Event_MAW) && Event_MAW < nrow(df)) {
+  df$Events[Event_MAW] <- 1
+}
+
+# Mark Event_MER with '1'
+if (!is.na(Event_MER) && Event_MER < nrow(df)) {
+  df$Events[Event_MER] <- 1
+}
+
+# Mark Event_BR + 2 with '1'
+if (!is.na(Event_BR) && Event_BR < nrow(df)) {
+  df$Events[Event_BR + 2] <- 1
+}
+
+# Mark Event_EFT with '1'
+if (!is.na(Event_EFT)) {
+    df$Events[Event_EFT] <- 1
+}
+
+# Check the number of marked events
+sum(df$Events)
+
+```
+
+```{r Trim the file from INI to EFT, then save}
+trimmed <- df[Event_INI:Event_EFT, ] %>%
+  select(25:29)
+
+# Specify the folder to save the data to
+output_folder <- "C:/Users/billy/OneDrive/Documents/Academics/2. Auburn/Sports Medicine & Movement Lab/Misc/Caroline Keller/Fellowship/Data/Trimmed Trials (INI to EFT)/Temporal Data"
+
+# Create the folder if it doesn't exist
+dir.create(output_folder, showWarnings = FALSE)
+
+write.csv(trimmed, file = file.path(output_folder, paste0(file_name, ".csv")), row.names = FALSE)
+
+```
+
+```{r Save event indices as a .csv file, with the extracted file name}
+event_indices <- cbind(file_name, Event_INI, Event_FFC, Event_MAW, Event_MER, Event_BR, Event_EFT)
+colnames(event_indices) <- c("File Name", "Event - INI", "Event - FFC", "Event - MAW",
+                             "Event - MER", "Event - BR", "Event - EFT")
+rownames(event_indices) <- NULL
+
+# Specify the folder to save the data to
+output_folder <- "C:/Users/billy/OneDrive/Documents/Academics/2. Auburn/Sports Medicine & Movement Lab/Misc/Caroline Keller/Fellowship/Data/Event Indices/Temporal Data"
+
+# Create the folder if it doesn't exist
+dir.create(output_folder, showWarnings = FALSE)
+
+write.csv(event_indices, file = file.path(output_folder, paste0(file_name, ".csv")), row.names = FALSE)
+
+print(event_indices)
+
+```
+
+```{r Extract arm kinetics between MAW and BR, eval = FALSE}
+df_kinetics <- df[Event_MAW:Event_BR, ]
+
+shoulder_IR_torque <- min(df_kinetics$`Shoulder Rotation Torque (Nm)`)
+shoulder_AP_torque <- min(df_kinetics$`Shoulder AP Torque (Nm)`)
+elbow_ML_torque <- min(df_kinetics$`Elbow ML Torque (Nm)`)
+# wrist_AP_torque <- min(df_kinetics$`Wrist AP Torque (Nm)`)
+
+```
+
+```{r Extract arm kinematics, eval = FALSE}
+# Joint Angles
+shoulder_Rot <- max(trimmed$`Shoulder Rotation`)
+elbow_flexion <- max(trimmed$`Elbow Fle/Ext`)
+wrist_extension <- min(trimmed$`Wrist Fle/Ext`)
+wrist_pronation_BR <- trimmed$`Wrist Pro/Sup`[trimmed$Sample == Event_BR - 3]
+
+# Joint Velocities
+shoulder_Rot_vel <- min(trimmed$`Shoulder Rotation Velocity`)
+elbow_extension_vel <- min(trimmed$`Elbow Fle/Ext Velocity`)
+wrist_flexion_vel <- max(trimmed$`Wrist Fle/Ext Velocity`)
+wrist_pronation_vel <- trimmed$`Wrist Pro/Sup Velocity`[trimmed$Sample == Event_BR - 3]
+
+```
+
+```{r Extract peak linear velocities and indices for sequencing variables}
+# Linear Pelvis Velocity
+pelvis_x_vel <- max(df$`Linear Velocity - Pelvis`[Event_INI:Event_BR])
+pelvis_idx <- which.max(df$`Linear Velocity - Pelvis`[Event_INI:Event_BR])
+
+# Linear Shoulder Velocity
+shoulder_x_vel <- max(df$`Linear Velocity - Shoulder`[Event_INI:Event_BR])
+shoulder_idx <- which.max(df$`Linear Velocity - Shoulder`[Event_INI:Event_BR])
+
+# Linear Elbow Velocity
+elbow_x_vel <- max(df$`Linear Velocity - Elbow`[Event_INI:Event_BR])
+elbow_idx <- which.max(df$`Linear Velocity - Elbow`[Event_INI:Event_BR])
+
+# Linear Wrist Velocity
+wrist_x_vel <- max(df$`Linear Velocity - Wrist`[Event_INI:Event_BR])
+wrist_idx <- which.max(df$`Linear Velocity - Wrist`[Event_INI:Event_BR])
+
+# Linear Finger Velocity
+finger_x_vel <- max(trimmed$`Linear Velocity - Finger`)
+finger_idx <- which.max(trimmed$`Linear Velocity - Finger`)
+
+sequence <- cbind(file_name, pelvis_x_vel, pelvis_idx, shoulder_x_vel, shoulder_idx,
+                  elbow_x_vel, elbow_idx, wrist_x_vel, wrist_idx,
+                  finger_x_vel, finger_idx)
+
+colnames(sequence) <- c("File Name", "Linear Velocity - Pelvis", "Linear Velocity - Pelvis (idx)",
+                        "Linear Velocity - Shoulder", "Linear Velocity - Shoulder (idx)",
+                        "Linear Velocity - Elbow", "Linear Velocity - Elbow (idx)",
+                        "Linear Velocity - Wrist", "Linear Velocity - Wrist (idx)",
+                        "Linear Velocity - Finger", "Linear Velocity - Finger (idx)")
+```
+
+```{r Visualise the sequence of peak linear velocities}
+plot_data <- data.frame(variable = factor(c("pelvis_idx", "shoulder_idx", "elbow_idx", "wrist_idx", "finger_idx"),
+                                          levels = c("pelvis_idx", "shoulder_idx", "elbow_idx", "wrist_idx", "finger_idx")),
+                        value = as.numeric(sequence[, c("Linear Velocity - Pelvis (idx)", "Linear Velocity - Shoulder (idx)", "Linear Velocity - Elbow (idx)", "Linear Velocity - Wrist (idx)", "Linear Velocity - Finger (idx)")]))
+
+ggplot(plot_data, aes(x=value, y=variable)) +
+  geom_point()
+
+```
+
+
+```{r plot the velocity waveforms}
+ggplot(df[Event_INI:Event_EFT, ], aes(x = `Sample #`)) +
+  geom_line(aes(y = `Linear Velocity - Pelvis`, color = "Linear Velocity - Pelvis")) +
+  geom_line(aes(y = `Linear Velocity - Shoulder`, color = "Linear Velocity - Shoulder")) +
+  geom_line(aes(y = `Linear Velocity - Elbow`, color = "Linear Velocity - Elbow")) +
+  geom_line(aes(y = `Linear Velocity - Wrist`, color = "Linear Velocity - Wrist")) +
+  geom_line(aes(y = `Linear Velocity - Finger`, color = "Linear Velocity - Finger"))
+
+```
+
+```{r Combine kinetics, kinematics, and temporal sequence, then save, eval = FALSE}
+df_combined <- cbind(file_name, shoulder_IR_torque, shoulder_AP_torque, elbow_ML_torque,
+                     wrist_AP_torque, shoulder_Rot, shoulder_Rot_vel, elbow_flexion,
+                     elbow_extension_vel, wrist_extension, wrist_flexion_vel, wrist_pronation_BR,
+                     wrist_pronation_vel)
+
+colnames(df_combined) <- c("File Name", "Shoulder Rotation Torque (Nm)", "Shoulder Horizontal Adduction Torque (Nm)", "Elbow Varus Torque (Nm)", "Wrist Flexion Torque (Nm)", "Max Shoulder ER", "Max IR Velocity", "Max Elbow Flexion", "Max Elbow Extension Velocity", "Max Wrist Extension", "Max Wrist Flexion Velocity", "Wrist Rotation at BR", "Wrist Rotation Velocity at BR")
+
+# df_combined <- cbind(df_combined, sequence)
+
+# Specify the folder to save the data to
+output_folder <- "C:/Users/billy/OneDrive/Documents/Academics/2. Auburn/Sports Medicine & Movement Lab/Misc/Caroline Keller/Fellowship/Data/Kinetics & Kinematics"
+
+# # Specify the folder to save the data to (use when sequence variables are available)
+# output_folder <- "C:/Users/billy/OneDrive/Documents/Academics/2. Auburn/Sports Medicine & Movement Lab/Misc/Caroline Keller/Fellowship/Data/Kinetics, Kinematics, and Temporal Sequence"
+
+# Create the folder if it doesn't exist
+dir.create(output_folder, showWarnings = FALSE)
+
+write.csv(df_combined, file = file.path(output_folder, paste0(file_name, ".csv")), row.names = FALSE)
+
+```
+
+```{r Save sequence as .csv file}
+# Specify the folder to save the data to
+output_folder <- "C:/Users/billy/OneDrive/Documents/Academics/2. Auburn/Sports Medicine & Movement Lab/Misc/Caroline Keller/Fellowship/Data/Kinetics & Kinematics/Sequence Data"
+
+# Create the folder if it doesn't exist
+dir.create(output_folder, showWarnings = FALSE)
+
+write.csv(sequence, file = file.path(output_folder, paste0(file_name, ".csv")), row.names = FALSE)
+
+```
+

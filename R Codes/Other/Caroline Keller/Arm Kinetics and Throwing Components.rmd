@@ -1,0 +1,252 @@
+# This code event marks pitching trials, then trims the file from initiation (INI) 
+# to end of follow-through (EFT). Once the file has been event marked, it extracts
+# shoulder and elbow kinetics (shoulder IR torque, shoulder horizontal adduction
+# torque, and elbow varus torque), and calculates a throwing component score (/15).
+
+```{r Load the required packages}
+library(tidyverse)
+
+```
+
+
+```{r Import the raw trial file (.txt), extract the file name, and remove the last empty column}
+# Let the user select the file to import
+file_path <- file.choose()
+
+# Extract the file name from the file path
+file_name <- tools::file_path_sans_ext(basename(file_path))
+# file_end <- substr(file_name, nchar(file_name) - 9, nchar(file_name))
+# file_name <- sub("(.*mph).*", "\\1", file_name)
+
+# Read the data
+df <- read.delim(file_path, header = TRUE, skip = 8, check.names = FALSE)
+
+# Remove column "31" as it's empty
+df <- df %>%
+  select(- 31) # Remove the final column in the data if it's empty
+
+```
+
+```{r Define the sampling rate, then initialise a column for the events, and time}
+# Define sampling rate (Hz)
+SampleRate <- 238.095 # change as necessary
+
+# Create and events column and populate with 0s
+df$Events <- 0
+
+# Create the column "Time (s)" (divide by sampling rate)
+df$`Time (s)` <- df$`Sample #` / SampleRate
+
+df <- df %>%
+  select(Events, `Time (s)`, everything())
+
+```
+
+```{r Define Event - INI}
+Event_INI <- which(diff(df$`Event - INI`) > 0.05)[1] # adjust threshold as necessary)
+
+```
+
+```{r Define Event - FFC}
+Event_FFC <- which(diff(df$`Event - FFC`) > 20)[1] # adjust threshold as necessary)
+
+```
+
+```{r Define Event - MAW}
+Event_MAW <- which(df$`Event - MAW` == min(df$`Event - MAW`, na.rm = TRUE))[1]
+
+```
+
+```{r Define Event - MER}
+Event_MER <- which(df$`Event - MER` == max(df$`Event - MER`, na.rm = TRUE))[1]
+
+```
+
+```{r Define Event - BR}
+Event_BR <- which(df$`Event - BR` == max(df$`Event - BR`, na.rm = TRUE))[1]
+
+```
+
+```{r Define Event - EFT}
+# Check if ball release has occurred
+if (!is.na(Event_BR) && Event_BR < nrow(df)) {
+  # Subset the data from ball release to ball release +100
+  subset_data <- df[(Event_BR + 10):(Event_BR + 100), ]
+
+  # Find the index of the row where FT is at its smallest in the subset
+  EFT_index <- which(subset_data$`Event - EFT` == min(subset_data$`Event - EFT`, na.rm = TRUE))[1]
+  
+}
+
+Event_EFT <- (Event_BR + 10) + EFT_index # determine event index in full data frame
+
+```
+
+```{r Mark each event index in "data" with a '1'}
+# Mark Event_BFC with '1'
+if (!is.na(Event_INI)) {
+  df$Events[Event_INI] <- 1
+}
+
+# Mark Event_FFC with '1'
+if (!is.na(Event_FFC)) {
+  df$Events[Event_FFC] <- 1
+}
+
+# Mark Event_MAW with '1'
+if (!is.na(Event_MAW) && Event_MAW < nrow(df)) {
+  df$Events[Event_MAW] <- 1
+}
+
+# Mark Event_MER with '1'
+if (!is.na(Event_MER) && Event_MER < nrow(df)) {
+  df$Events[Event_MER] <- 1
+}
+
+# Mark Event_BR + 2 with '1'
+if (!is.na(Event_BR) && Event_BR < nrow(df)) {
+  df$Events[Event_BR + 2] <- 1
+}
+
+# Mark Event_EFT with '1'
+if (!is.na(Event_EFT)) {
+    df$Events[Event_EFT] <- 1
+}
+
+# Check the number of marked events
+sum(df$Events)
+
+```
+
+```{r Save event indices as a .csv file, with the extracted file name}
+
+event_indices <- cbind(Event_INI, Event_FFC, Event_MAW, Event_MER, Event_BR, Event_EFT)
+colnames(event_indices) <- c("Event - INI", "Event - FFC", "Event - MAW",
+                             "Event - MER", "Event - BR", "Event - EFT")
+rownames(event_indices) <- NULL
+
+# Specify the folder to save the data to
+output_folder <- "C:/Users/billy/OneDrive/Documents/Academics/2. Auburn/Sports Medicine & Movement Lab/Misc/Caroline Keller/Fellowship/Data/Event Indices"
+
+# Create the folder if it doesn't exist
+dir.create(output_folder, showWarnings = FALSE)
+
+write.csv(event_indices, file = file.path(output_folder, paste0(file_name, ".csv")), row.names = FALSE)
+
+```
+
+```{r Trim the file from INI to EFT, then save}
+trimmed <- df[Event_INI:Event_EFT, ]
+
+# Specify the folder to save the data to
+output_folder <- "C:/Users/billy/OneDrive/Documents/Academics/2. Auburn/Sports Medicine & Movement Lab/Misc/Caroline Keller/Fellowship/Data/Trimmed Trials (INI to EFT)"
+
+# Create the folder if it doesn't exist
+dir.create(output_folder, showWarnings = FALSE)
+
+write.csv(trimmed, file = file.path(output_folder, paste0(file_name, ".csv")), row.names = FALSE)
+
+```
+
+```{r Extract arm kinetics between MAW and BR}
+df_kinetics <- df[Event_MAW:Event_BR, ]
+
+shoulder_IR_torque <- min(df_kinetics$`Shoulder Rotation Torque (Nm)`)
+shoulder_AP_torque <- min(df_kinetics$`Shoulder AP Torque (Nm)`)
+elbow_ML_torque <- min(df_kinetics$`Elbow ML Torque (Nm)`)
+
+```
+
+```{r Extract arm kinematics}
+# Joint Angles
+shoulder_Rot <- max(trimmed$`Shoulder Rotation`)
+elbow_flexion <- max(trimmed$`Elbow Fle/Ext`)
+wrist_extension <- min(trimmed$`Wrist Fle/Ext`)
+wrist_pronation_BR <- trimmed$`Wrist Pro/Sup`[trimmed$Sample == Event_BR - 3]
+
+# Joint Velocities
+shoulder_Rot_vel <- min(trimmed$`Shoulder Rotation Velocity`)
+elbow_extension_vel <- min(trimmed$`Elbow Fle/Ext Velocity`)
+wrist_flexion_vel <- max(trimmed$`Wrist Fle/Ext Velocity`)
+wrist_pronation_vel <- trimmed$`Wrist Pro/Sup Velocity`[trimmed$Sample == Event_BR - 3]
+
+```
+
+```{r Compute throwing score using a component set}
+# Identify when the trunk is square to target
+trunk_0 <- which(trimmed$`Component - Trunk Rotation` > 0)[1]
+
+# stride level
+c_stride <- dplyr::case_when(
+  trimmed$`Component - Stride`[trimmed$Sample == Event_FFC - 1] < 0 ~ 1,
+  trimmed$`Component - Stride`[trimmed$Sample == Event_FFC - 1] < 0.3 ~ 2,
+  trimmed$`Component - Stride`[trimmed$Sample == Event_FFC - 1] > 0.3 ~ 3,
+  TRUE ~ NA_character_  # Catch-all in case no conditions are met
+)
+
+# backswing level - need to determine how we will define backswing levels
+c_backswing <- dplyr::case_when(
+  trimmed$`Component - Stride`[trimmed$Sample == Event_FFC - 1] < 0 ~ 1,
+  trimmed$`Component - Stride`[trimmed$Sample == Event_FFC - 1] < 0.3 ~ 2,
+  trimmed$`Component - Stride`[trimmed$Sample == Event_FFC - 1] > 0.3 ~ 3,
+  TRUE ~ NA_character_  # Catch-all in case no conditions are met
+)
+
+# pelvis/trunk level - needs addressing as values way too small
+c_trunk <- dplyr::case_when(
+  max(trimmed$`Component - Pelvis Velocity`, na.rm = TRUE) < 200 & max(trimmed$`Component - Trunk Velocity`, na.rm = TRUE) < 200 ~ 1,  # Level 1 condition
+  which.max(trimmed$`Component - Trunk Velocity`) - which.max(trimmed$`Component - Pelvis Velocity`) <= 5 ~ 2,  # Level 2 condition (peaks within 5 frames)
+  which.max(trimmed$`Component - Trunk Velocity`) - which.max(trimmed$`Component - Pelvis Velocity`) > 5 ~ 3,   # Level 3 condition (peaks more than 5 frames apart)
+  TRUE ~ NA_real_  # Catch-all in case no conditions are met
+)
+
+# humerus level
+c_trunk <- dplyr::case_when(
+  trimmed$`Component - Humerus Elevation`[trimmed$`Sample #` == Event_BR - 3] < 200 & max(trimmed$`Component - Trunk Velocity`, na.rm = TRUE) < 200 ~ 1,  # Level 1 condition
+  which.max(trimmed$`Component - Trunk Velocity`) - which.max(trimmed$`Component - Pelvis Velocity`) <= 5 ~ 2,  # Level 2 condition (peaks within 5 frames)
+  which.max(trimmed$`Component - Trunk Velocity`) - which.max(trimmed$`Component - Pelvis Velocity`) > 5 ~ 3,   # Level 3 condition (peaks more than 5 frames apart)
+  TRUE ~ NA_real_  # Catch-all in case no conditions are met
+)
+  
+c_humerus <- dplyr::case_when(
+  trimmed$`Component - Humerus Elevation`[trimmed$`Sample #` == Event_BR - 3] < 75 | 
+    trimmed$`Component - Humerus Elevation`[trimmed$`Sample #` == Event_BR - 3] > 105 ~ 1,  # Level 1 condition
+  trimmed$`Component - Humerus Elevation`[trimmed$`Sample #` == Event_BR - 3] > 75 & 
+    trimmed$`Component - Humerus Elevation`[trimmed$`Sample #` == Event_BR - 3] < 105 & 
+    trimmed$`Component - Humerus`[trimmed$`Sample #` == Event_BR - 3] > 0.05 ~ 2,  # Level 2 condition
+  trimmed$`Component - Humerus Elevation`[trimmed$`Sample #` == Event_BR - 3] > 75 & 
+    trimmed$`Component - Humerus Elevation`[trimmed$`Sample #` == Event_BR - 3] < 105 & 
+    trimmed$`Component - Humerus`[trimmed$`Sample #` == Event_BR - 3] <= 0.05 ~ 3,  # Level 3 condition
+  TRUE ~ NA_real_  # Catch-all in case no conditions are met
+)
+
+c_forearm <- dplyr::case_when(
+  max(trimmed$`Component - Forearm`) < 90 ~ 1, # level 1
+  trunk_0 - which.max(trimmed$`Component - Forearm`) > 0 ~ 2, # level 2
+  trunk_0 - which.max(trimmed$`Component - Forearm`) < 0 ~3, # level 3
+  TRUE ~ NA_real_  # Catch-all in case no conditions are met
+)
+```
+
+```{r Combine kinetics, kinematics, and throwing component scores then save}
+df_combined <- cbind(file_name, shoulder_IR_torque, shoulder_AP_torque, elbow_ML_torque,
+                     shoulder_Rot, shoulder_Rot_vel, elbow_flexion, elbow_extension_vel,
+                     wrist_extension, wrist_flexion_vel, wrist_pronation_BR, wrist_pronation_vel,
+                     c_stride, c_backswing, c_trunk, c_humerus, c_forearm)
+
+colnames(df_combined) <- c("File Name", "Shoulder Rotation Torque (Nm)", "Shoulder Horizontal Adduction Torque (Nm)", "Elbow Varus Torque (Nm)", "Max Shoulder ER", "Max IR Velocity", "Max Elbow Flexion", "Max Elbow Extension Velocity", "Max Wrist Extension", "Max Wrist Flexion Velocity", "Wrist Rotation at BR", "Wrist Rotation Velocity at BR", "Comp Stride", "Comp Backswing", "Comp Trunk", "Comp Humerus", "Comp Forearm")
+
+
+# Specify the folder to save the data to
+output_folder <- "C:/Users/billy/OneDrive/Documents/Academics/2. Auburn/Sports Medicine & Movement Lab/Misc/Caroline Keller/Fellowship/Data/Kinetics, Kinematics, and Component Scores"
+
+# Create the folder if it doesn't exist
+dir.create(output_folder, showWarnings = FALSE)
+
+write.csv(df_combined, file = file.path(output_folder, paste0(file_name, ".csv")), row.names = FALSE)
+
+
+```
+
+
+

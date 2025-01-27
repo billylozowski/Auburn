@@ -1,0 +1,57 @@
+# This is a cheat sheet for all the arguments I have used in scripts to date.
+# The goal is to have these as a quick guide when writing new scripts in future.
+
+```{r Importing Data}
+
+# When you want to choose a specific file from the file browser, use this code
+file_path <- file.choose()
+
+# file_path creates an object that contains the imported file's path
+# file.choose opens a search window so you can choose the desired file
+
+library(readr)
+data <- read.csv(file_path)
+
+# readr is the package used to read in .csv files
+# data is the new data frame being created
+# read.csv is the function used to read the file in
+# file_path tells R which .csv file to import
+
+library(readxl)
+data <- read_excel(file_path)
+
+# Much like readr, readxl is the package for reading in excel files. read_excel is the function
+
+```
+
+```{r Saving Data}
+
+# When saving the file to Documents folder, use this code
+write.csv(df, "Save the file as whatever you want to call is.csv", row.names = FALSE, na = "")
+
+# write.csv chooses the file type to save as
+# df is the name of the data frame you want to save
+# row.names = FALSE prevents th rows being labelled in sequence
+# na = "" means any NA values are saved as blank cells instead of strings (text)
+
+```
+
+```{r Manipulating Data}
+
+data <- t(data) # transpose the data frame
+
+data <- data %>%
+  select() # select certain columns from the data frame 'data'
+
+data <- data %>%
+  filter(column == "value in column") # filter certain rows from the data frame 'data'
+
+data <- data %>%
+  filter(column %in% c("value1", "value2", "value3")) # filter certain rows from data frame 'data'
+                                                      # use this when you want more that one row value
+
+
+
+
+```
+

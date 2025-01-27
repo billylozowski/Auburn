@@ -1,0 +1,47 @@
+# This code imports kinematics (at specified events), Rapsodo data, and temporal variables before combining them into a master file
+
+```{r}
+library(readr)
+# Load Variables of Interest (all participants).csv
+kinematics <- read_csv("C:/Users/billy/OneDrive/Documents/Auburn/Sports Medicine & Movement Lab/PhD Thesis/Data/Main Study/KOT - Processed Data/Variables of Interest (all participants).csv")
+
+library(dplyr) 
+# Change column name using colnames
+colnames(kinematics)[colnames(kinematics) == "File Name"] <- "File Name (kinematics)"
+
+# Load AIM (pilot)
+Rapsodo <- read_csv("C:/Users/billy/OneDrive/Documents/Auburn/Sports Medicine & Movement Lab/PhD Thesis/Data/Main Study/KOT - Processed Data/Rapsodo Data (combined).csv")
+
+# Load Additional Data (combined)
+additional_data <- read_csv("C:/Users/billy/OneDrive/Documents/Auburn/Sports Medicine & Movement Lab/PhD Thesis/Data/Main Study/KOT - Processed Data/Additional Data (combined).csv")
+  
+
+# Check if 'File Name' columns match between VOI_data and additional_data
+all(kinematics$`File Name` == additional_data$`File Name`) # Should return TRUE if all match
+
+```
+
+
+```{r}
+# Combine kinematic and ball data
+combined_data <- cbind(Rapsodo, kinematics, additional_data) %>%
+  select(`File Name (kinematics)`, `File Name`, Player, No, everything()) 
+
+# Check if File Names match
+print(combined_data[, 1] == combined_data[, 2])
+
+combined_data <- combined_data %>%
+  select(-`File Name (kinematics)`)
+
+# Specify the folder to save the data to
+output_folder <- "C:/Users/billy/OneDrive/Documents/Auburn/Sports Medicine & Movement Lab/PhD Thesis/Data/Main Study/KOT - Processed Data"
+
+# Create the folder if it doesn't exist
+dir.create(output_folder, showWarnings = FALSE)
+
+write.csv(combined_data, file = file.path(output_folder, "Master File.csv"), row.names = FALSE)
+
+rm(list = ls())
+```
+
+

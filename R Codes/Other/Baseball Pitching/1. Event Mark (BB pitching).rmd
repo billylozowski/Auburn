@@ -1,0 +1,359 @@
+
+# This code event marks baseball pitching throwing trials
+# It extracts variable values at all events and saves them as a .csv file
+# It overwrites the original .txt file with the updated events file
+
+```{r Load the Data & Event Mark}
+
+rm(list = ls())
+
+# Let the user select the file to import
+file_path <- file.choose()
+
+# Read the data
+data <- read.delim(file_path, header = TRUE, skip = 8, check.names = FALSE)
+
+# Remove column "49" as it's empty
+library(dplyr)
+data <- data %>%
+  select(! 14) # Remove the final frame in the data if it's empty
+
+# Define sampling rate (Hz)
+SampleRate <- 238.095 # change as necessary
+
+# Create and events column and populate with 0s
+data$Events <- 0
+
+# Create the column "Time (s)" (divide by sampling rate)
+data$`Time (s)` <- data$`Sample #` / SampleRate
+
+library(dplyr)
+
+# Move the 'Events column to the first position and 'Time (s)' to the second position
+data <- data %>% 
+  select(Events, `Time (s)`, everything())
+
+rm(SampleRate)
+
+
+# Need to add stride length (% height) here
+
+# Front Foot Contact (FFC)
+FFC_condition <- data$`Event - FFC` > 30  # define FFC condition
+
+# Find the index of the first occurrence
+FFC_index <- which(FFC_condition)[1]
+
+# Mark the first frame where the condition is met with '1'
+if (!is.na(FFC_index)) {
+  data$Events[FFC_index] <- 1
+}
+
+rm(FFC_condition)
+
+
+# Find the maximum value of Event - INI
+max_INI <- max(data$`Event - INI`, na.rm = TRUE)
+
+# Calculate the starting index for subsetting
+start_index <- max(1, which(data$`Event - INI` == max_INI) - 150) # 75 when at 100Hz
+
+# Subset the data from start_index to the end
+subset_data <- data[start_index:nrow(data), ]
+
+# Find the index of the first occurrence where the difference between values exceeds 0.0001 within the subset
+INI_index <- which(diff(subset_data$`Event - INI`) > 0.0001)[1]
+
+# If INI_index is not NA, adjust the index to reflect the original data
+if (!is.na(INI_index)) {
+  INI_index <- start_index + INI_index - 1
+}
+
+# Mark the first frame where the condition is met with '1' in the original data
+if (!is.na(INI_index)) {
+  data$Events[INI_index] <- 1
+}
+
+rm(max_INI, start_index)
+
+# Maximum External Rotation (MER) <- will be MAW going forward
+MER_condition <- data$`Event - MER` == min(data$`Event - MER`, na.rm = TRUE)  # define MER condition
+
+# Find the index of the minimum value occurrence
+MER_index <- which(MER_condition)[1]
+
+# Mark the frame where the minimum value occurs with '1'
+if (!is.na(MER_index)) {
+  data$Events[MER_index] <- 1
+}
+
+rm(MER_condition)
+
+
+# Ball Release (BR)
+
+# Subset the data from FFC_index to the end of the dataset
+subset_data <- data[FFC_index:nrow(data), ]
+
+# Find the maximum value of Event - BR within the subset data
+max_BR_value <- max(subset_data$`Event - BR`, na.rm = TRUE)
+BR_condition <- subset_data$`Event - BR` == max_BR_value # define BR condition
+
+# Find the index of the maximum value of Event - BR within the subset data
+BR_index <- which(BR_condition)[1]
+BR_index <- FFC_index + BR_index + 3 # will be +1 when at 100Hz
+
+# Index the first frame after the occurrence of BR_index
+if (!is.na(BR_index) && BR_index < nrow(data)) {
+  data$Events[BR_index] <- 1
+   }
+
+rm(BR_condition, max_BR_value)
+
+
+# End of Follow-Through (EFT) - most posterior position of the hand's COM (X) after BR
+
+# Check if ball release has occurred
+if (!is.na(BR_index) && BR_index < nrow(data)) {
+  # Subset the data within 100 frames of ball release starting at BR_index
+  subset_data <- data[BR_index:(BR_index + 100), ]
+
+   # Find the index of the first peak after ball release
+  peak_index <- which(subset_data$`Event - EFT` == max(subset_data$`Event - EFT`, na.rm = TRUE))[1]
+
+  # Check if there is a peak after ball release
+  if (!is.na(peak_index)) {
+    # Find the index of the first minimum value after the peak
+    EFT_index <- which.min(subset_data$`Event - EFT`[peak_index:nrow(subset_data)]) + peak_index - 1
+    
+    # Mark the row where the first minimum value after the peak occurs with '1' in the original data
+    data$Events[BR_index + EFT_index - 1] <- 1
+    
+  }
+}
+
+EFT_index <- BR_index + (EFT_index - 1)
+
+rm(peak_index)
+
+# Check the number of marked events
+sum(data$Events)
+
+```
+
+
+```{r, eval = FALSE Calculate Arm Path}
+# Subset data from BR-5 to BR+5 and select just wrist variables
+
+wrist_data <- subset_data %>%
+  head(10) %>%
+  select(`Wrist Position (Y)`, `Wrist Position (Z)`)
+
+# Linear model for wrist data
+wrist_model <- lm(`Wrist Position (Y)` ~ `Wrist Position (Z)`, data = wrist_data)
+
+# Print the summary of the linear model
+summary(wrist_model)
+
+# Extract the slope and intercept
+slope <- coef(wrist_model)[2]
+intercept <- coef(wrist_model)[1]
+
+# Print the slope and intercept
+print(paste("Slope:", slope))
+print(paste("Intercept:", intercept))
+
+# Scatter plot of the data points and trend line
+library(ggplot2)
+ggplot(wrist_data, aes(x = `Wrist Position (Z)`, y = `Wrist Position (Y)`)) +
+  geom_point(color = "blue", size = 3) +
+  labs(title = "Scatter Plot with Trendline",
+       x = "Wrist Position (Z)",
+       y = "Wrist Position (Y)") +
+  geom_smooth(method = "lm", se = FALSE, color = "red") +
+  theme_minimal()
+
+# Calculate the incline angle in radians
+incline_radians <- atan(slope)
+
+# Convert radians to degrees
+incline_degrees <- incline_radians * (180 / pi)
+
+# Print the incline angle
+print(paste("Incline Angle (degrees):", incline_degrees))
+
+# Convert object into a data frame
+arm_path <- data.frame(incline_degrees)
+colnames(arm_path) <- "Arm Path"
+rownames(arm_path) <- NULL
+
+# Add File Name to arm_path data frame
+arm_path <- arm_path %>%
+  mutate("File Name" = file_name, .before = "Arm Path")
+
+# Assuming `arm_path` is your data frame and `file_path` contains the path of the imported file
+output_folder <- file.path(dirname(file_path), "Arm Path")
+
+# Create the "Arm Path" folder if it doesn't exist
+dir.create(output_folder, showWarnings = FALSE)
+
+# Save the data frame to a CSV file in the "Arm Path" folder
+write.csv(arm_path, file = file.path(output_folder, paste0(file_name, ".csv")), row.names = FALSE)
+
+rm(wrist_data, arm_path, wrist_model, slope, intercept, incline_radians, incline_degrees, subset_data)
+
+```
+
+
+```{r Extract Values at Events}
+# Create a list of indices and corresponding names
+event_indices <- list(
+  INI = INI_index,
+  FFC = FFC_index,
+  MER = MER_index,
+  BR = BR_index,
+  EFT = EFT_index)
+
+# Create 'At_Events' data frame
+At_Events <- data.frame(Event = character(0), stringsAsFactors = FALSE)
+
+# Populate 'At_Events' with index names and corresponding rows
+for (event_type in names(event_indices)) {
+  index <- event_indices[[event_type]]
+  if (!is.na(index)) {
+    row_data <- data[index, ]
+    row_data$Event <- event_type
+    At_Events <- rbind(At_Events, row_data)
+  }
+}
+
+# Reorder columns to have 'Event' as the first column
+At_Events <- At_Events[, c("Event", setdiff(names(At_Events), "Event"))]
+
+# Remove Event and KS columns from final output
+At_Events <- At_Events %>%
+  select(-Events, -`Event - INI`,  -`Event - FFC`, -`Event - MER`, -`Event - BR`, -`Event - EFT`)
+         #-`Pelvis Velocity (KS)`, -`Trunk (KS)`, -`Upper Arm (KS)`, 
+         #-`Forearm (KS)`, -`Hand (KS)`)
+
+# Add a column with the file's name
+file_name <- tools::file_path_sans_ext(basename(file_path))
+At_Events <- cbind(`File Name` = file_name, At_Events)
+
+```
+
+```{r Add Minimum & Maximum Values to 'At Events'}
+# Calculate minimum and maximum values for each column in 'data'
+min_values <- sapply(data, min, na.rm = TRUE)
+max_values <- sapply(data, max, na.rm = TRUE)
+
+# Create 'MinMax' data frame with min and max values
+MinMax <- data.frame(rbind(min_values, max_values), check.names = FALSE)
+rownames(MinMax) <- NULL # Remove row names
+
+# Add a column with labels "min" and "max"
+MinMax$Event <- c("Min", "Max")
+
+# Add a column with the trial name
+file_name <- tools::file_path_sans_ext(basename(file_path))
+MinMax$`File Name` <- file_name
+
+# Reorder columns to match the original 'data' data frame
+MinMax <- MinMax[, c("File Name", "Event", names(data))]
+
+# Remove Event columns
+MinMax <- MinMax %>%
+  select(-Events,  -`Event - INI`, -`Event - FFC`, -`Event - MER`, -`Event - BR`, -`Event - EFT`)
+         #-`Pelvis Velocity (KS)`, -`Trunk (KS)`, -`Upper Arm (KS)`, 
+         #-`Forearm (KS)`, -`Hand (KS)`)
+
+# Add minimum and maximum values to bottom of 'At_Events' data frame
+At_Events <- rbind(At_Events, MinMax)
+
+rm(max_values, min_values, MinMax)
+
+```
+
+```{r Calculate the % of min and max indexes}
+# Calculate the range between INI_index and BR_index
+range <- BR_index - INI_index + 1
+
+# Calculate the percentage each frame represents
+frame_perc <- 100 / range
+
+# Initialize dataframes to store minimum and maximum values
+min_df <- data.frame(matrix(nrow = 1, ncol = 15))
+max_df <- data.frame(matrix(nrow = 1, ncol = 15))
+
+# Specify the range of columns
+columns_of_interest <- 1:15
+
+# Loop through each column
+for (col_index in columns_of_interest) {
+  col_name <- names(data)[col_index]  # Get the original column name
+  
+  # Find index of minimum and maximum values between INI_index and EFT_index
+  min_index <- which.min(data[INI_index:EFT_index, col_index]) + INI_index - 1
+  max_index <- which.max(data[INI_index:EFT_index, col_index]) + INI_index - 1
+  
+  # Calculate the percentage indices
+  min_percentage_index <- (min_index - INI_index) * frame_perc
+  max_percentage_index <- (max_index - INI_index) * frame_perc
+  
+  # Store the results in the dataframes
+  min_df[1, col_index] <- min_percentage_index
+  max_df[1, col_index] <- max_percentage_index
+}
+
+# Set column names
+colnames(min_df) <- colnames(max_df) <- names(data)
+
+percentage <- rbind(min_df, max_df)
+rownames(percentage) <- NULL # Remove row names
+
+# Add a column with labels "min" and "max"
+percentage$Event <- c("Min % Index", "Max % Index")
+
+# Add a column with the trial name
+file_name <- tools::file_path_sans_ext(basename(file_path))
+percentage$`File Name` <- file_name
+
+# Reorder columns to match the original 'data' data frame
+percentage <- percentage[, c("File Name", "Event", names(data))]
+
+# Remove Event columns
+percentage <- percentage %>%
+  select(-Events,  -`Event - INI`, -`Event - FFC`, -`Event - MER`, -`Event - BR`, -`Event - EFT`)
+
+At_Events <- rbind(At_Events, percentage)
+
+rm(min_df, max_df, percentage, subset_data, col_index, col_name, columns_of_interest, frame_perc,
+   max_index, min_index, max_percentage_index, min_percentage_index, range)
+
+```
+
+
+```{r}
+# Save 'At_Events' as a CSV file in the same directory as the original .txt file
+write.csv(At_Events, file = file.path(dirname(file_path), paste0(file_name, " (at events).csv")), row.names = FALSE)
+
+# Print a confirmation message
+print(At_Events[, 1:3])
+
+# Clean Console
+rm(INI_index, FFC_index, MER_index, BR_index, EFT_index, event_type, event_indices, index, row_data)
+
+```
+
+```{r}
+# Save 'data' as a tab-delimited text file, overwriting the original .txt file
+write.table(data, file = file_path, sep = "\t", row.names = FALSE, col.names = TRUE)
+
+# Print a confirmation message
+print(paste("Data saved to:", file_path))
+
+```
+
+# Once I have event marked trials, I will look to determine the duration between events (phases).
+
+# I also want to find the angular displacement across phases (current value - previous value).

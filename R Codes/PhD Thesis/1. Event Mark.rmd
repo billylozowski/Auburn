@@ -1,0 +1,586 @@
+
+# This code event marks throwing trials / calculates "Arm Path", "BR Timing", "Max Shoulder H Abd Velocity" between BFC & BR, and "Phase Durations"
+
+```{r Load in the desired file, and add additional columns}
+# rm(list = ls())
+  
+# Let the user select the file to import
+file_path <- file.choose()
+
+# Read the data
+data <- read.delim(file_path, header = TRUE, skip = 8, check.names = FALSE)
+file_name <- tools::file_path_sans_ext(basename(file_path))
+
+# Remove column "51" as it's empty
+library(dplyr)
+data <- data %>%
+  select(! 51)
+
+# Define sampling rate (Hz)
+SampleRate <- 100 # change as necessary
+
+# Create and events column and populate with 0s
+data$Events <- 0
+
+# Create the column "Time (s)" (divide by sampling rate)
+data$`Time (s)` <- data$`Sample #` / SampleRate
+
+# Create the column "Stride Length (% Height)
+data$`Stride Length (% Height)` <- data$`Stride Length (X)` / data$Height
+
+# Add a File Name column
+data$`File Name` <- file_name
+```
+
+# EVENT MARKING...
+
+```{r Index Front Foot Contact (FFC) - using force plate data}
+# find the first instance where FFC exceeds specified threshold
+FFC_index <- which(data$`Event - FFC` > 30)[1] # adjust threshold as necessary
+
+```
+
+ 
+```{r Index Front Foot Contact (FFC) - without force plate data, use this chunk by removing, eval = FALSE}
+max_FFC_index <- which.max(data$`Event - FFC`) # find the highest value in Event - FFC
+
+FFC_data <- data[max_FFC_index:nrow(data), ] # subset the data from the peak to the end
+
+FFC_index <- which(FFC_data$`Event - FFC` < 1& !is.na(FFC_data$`Event - FFC`))[1] # find the first instance where the value drops below 1
+
+FFC_index <- max_FFC_index + FFC_index - 1 # adjust the index to the original data frame
+
+rm(FFC_data)
+
+```
+
+
+```{r Index Back Foot Contact (BFC) - first from where BFC1 crosses from negative to positive, AFTER BFC2!, eval = FALSE}
+# BFC1 - ankle acceleration in the Y (vertical) | BFC2 - ankle velocity in the X (anteroposterior)
+
+# Subset the data frame from the start to FFC_index
+subset_data_BFC2 <- data[1:FFC_index, ]
+
+# Find the index of the maximum value in "Event - BFC2" within the subsetted data
+BFC2_index <- which.max(ifelse(is.na(subset_data_BFC2$`Event - BFC2`), -Inf, subset_data_BFC2$`Event - BFC2`))
+
+# Subset the data frame from the maximum BFC_1 index to the end (may be better to FFC_index)
+subset_data_BFC1 <- data[(BFC2_index + 1):nrow(data), ]
+
+# Find the first occurrence where BFC1 goes from negative to positive
+BFC1_index <- which.max(diff(sign(subset_data_BFC1$`Event - BFC1`) > 0))
+
+# Calculate the overall index in the original data frame
+BFC_index <- BFC2_index + BFC1_index
+
+rm(BFC2_index, BFC1_index, subset_data_BFC1, subset_data_BFC2)
+```
+
+ 
+```{r Index Maximum Arm Withdrawal (MAW)}
+# Find where the arm is most withdrawn behind the trunk (minimum value)
+MAW_index <- which(data$`Event - MAW` == min(data$`Event - MAW`, na.rm = TRUE))[1]
+
+```
+
+ 
+```{r Index Ball Release (BR)}
+# Find where the hand's velocity (X) peaks
+BR_index <- which(data$`Hand COM Velocity (X)` == max(data$`Hand COM Velocity (X)`, na.rm = TRUE))[1]
+
+```
+
+ 
+```{r Index End of Follow-Through (EFT) - most posterior position of the hand's COM (X) after BR}
+# Check if ball release has occurred
+if (!is.na(BR_index) && BR_index < nrow(data)) {
+  # Subset the data from ball release to ball release +100
+  subset_data <- data[(BR_index + 10):(BR_index + 50), ]
+
+  # Find the index of the row where FT is at its smallest in the subset
+  EFT_index <- which(subset_data$`Event - EFT` == min(subset_data$`Event - EFT`, na.rm = TRUE))[1]
+  
+}
+
+EFT_index <- (BR_index + 10) + EFT_index # determine event index in full data frame
+```
+
+
+```{r Mark each event index in "data" with a '1'}
+# Mark BFC_index with '1'
+if (!is.na(BFC_index)) {
+  data$Events[BFC_index +1] <- 1
+}
+
+# Mark FFC_index with '1'
+if (!is.na(FFC_index)) {
+  data$Events[FFC_index] <- 1
+}
+
+# Mark MAW_index + 1 with '1'
+if (!is.na(MAW_index) && MAW_index < nrow(data)) {
+  data$Events[MAW_index] <- 1
+}
+
+# Mark BR_index + 1 with '1'
+if (!is.na(BR_index) && BR_index < nrow(data)) {
+  data$Events[BR_index + 1] <- 1
+}
+
+# Mark EFT_index + 1 with '1'
+if (!is.na(EFT_index)) {
+    data$Events[EFT_index] <- 1
+}
+
+# Check the number of marked events
+sum(data$Events)
+
+```
+
+
+```{r}
+# Calculate the range between BFC_index and BR_index
+range <- BR_index - BFC_index + 1 # change this to EFT for reports
+
+# Calculate the percentage for each sample
+data$`Duration (%)` <- 100 * (data$`Sample #` - BFC_index + 1) / range
+
+# Move the 'Events column to the first position and 'Time (s)' to the second position
+library(dplyr)
+data <- data %>% 
+  select(`File Name`, Events, `Time (s)`, `Sample #`, `Duration (%)`, Height, Mass, `Stride Length (% Height)`, everything())
+
+rm(SampleRate)
+
+```
+
+
+```{r Create a data frame which will be used to stack multiple trials for plotting}
+# Define selected variables as a character vector
+# These variables will change dependent on those identified as related to AIM
+plot_data <- data[BFC_index:EFT_index, ] %>%
+  select("File Name",
+         "Duration (%)",
+         "Front Knee Flexion", 
+         "Front Knee Extension Velocity",
+         "Pelvis Rotation (Y)",
+         "Pelvis Rotation Velocity",
+         "Trunk Rotation (Y)",
+         "Trunk Rotation Velocity",
+         "Shoulder Abduction",
+         "Shoulder H Abduction",
+         "Shoulder Rotation",
+         "Shoulder Rotation Velocity",
+         "Elbow Flexion",
+         "Elbow Extension Velocity",
+         "COM Velocity (X)",
+         "COM Velocity (Z)"
+         )
+
+# Specify the folder path for saving the data
+output_folder <- file.path(dirname(file_path), "Plot Data")
+
+# Create the folder if it doesn't exist
+dir.create(output_folder, showWarnings = FALSE)
+
+# Save plot_data as CSV to the specified folder and file name
+write.csv(plot_data, file = file.path(output_folder, paste0(file_name, " ~ Plot Data.csv")), row.names = FALSE)
+
+```
+
+
+```{r Save the Event Marked trial as a .csv file}
+# Specify the folder to save the data to
+output_folder <- "C:/Users/billy/OneDrive/Documents/Auburn/Sports Medicine & Movement Lab/PhD Thesis/Data/Main Study/KOT - Event Marked Trials"
+
+# Create the folder if it doesn't exist
+dir.create(output_folder, showWarnings = FALSE)
+
+new_file_path <- file.path(output_folder, paste0(file_name, ".csv"))
+
+# Save 'data' as a tab-delimited text file, overwriting the original .txt file
+write.csv(data, file = new_file_path, row.names = FALSE)
+
+# Print a confirmation message
+print(paste("Data saved to:", new_file_path))
+
+```
+
+
+```{r Create a new data frame with just wrist Y and Z data (used for arm path)}
+# Subset data from BR-5 to BR+5 and select just wrist variables
+subset_data <- data[BR_index:(BR_index + 100), ]
+wrist_data <- subset_data %>%
+  head(10) %>%
+  select(`Wrist Position (Y)`, `Wrist Position (Z)`)
+
+# Linear model for wrist data
+wrist_model <- lm(`Wrist Position (Y)` ~ `Wrist Position (Z)`, data = wrist_data)
+
+# Print the summary of the linear model
+summary(wrist_model)
+
+# Extract the slope and intercept
+slope <- coef(wrist_model)[2]
+intercept <- coef(wrist_model)[1]
+
+# Print the slope and intercept
+print(paste("Slope:", slope))
+print(paste("Intercept:", intercept))
+
+# Scatter plot of the data points and trend line
+library(ggplot2)
+ggplot(wrist_data, aes(x = `Wrist Position (Z)`, y = `Wrist Position (Y)`)) +
+  geom_point(color = "blue", size = 3) +
+  labs(title = "Scatter Plot with Trendline",
+       x = "Wrist Position (Z)",
+       y = "Wrist Position (Y)") +
+  geom_smooth(method = "lm", se = FALSE, color = "red") +
+  theme_minimal()
+
+# Calculate the incline angle in radians
+incline_radians <- atan(slope)
+
+# Convert radians to degrees
+incline_degrees <- abs(incline_radians * (180 / pi))
+
+# Print the incline angle
+print(paste("Incline Angle (degrees):", incline_degrees))
+
+# Convert object into a data frame
+arm_path <- data.frame(incline_degrees)
+colnames(arm_path) <- "Arm Path (°)"
+rownames(arm_path) <- NULL
+
+
+rm(wrist_model, slope, intercept, incline_radians, incline_degrees, subset_data)
+
+```
+
+ 
+```{r Calculate BR Timing in milleseconds >> elbow position (X) moves in front of the thorax (> 0)} 
+# Subset the data from FFC_index to the end of the data
+BR_Timing_data <- data[FFC_index:nrow(data), ]
+
+# Index the first frame where elbow position (X) moves in front of the thorax
+elbow_position_index <- which(BR_Timing_data$`Elbow to Thorax (X)` > 0)[1]
+
+# Adjust the index to the correct position within the original data frame
+elbow_position_index <- FFC_index + elbow_position_index - 1
+
+# Calculate the time from the maximum value to BR_index in ms
+BR_Timing <- (BR_index - elbow_position_index) * 10
+
+# Create a new data frame with Ball Release Timing
+BR_Timing <- data.frame(`BR Timing` = BR_Timing)
+colnames(BR_Timing) <- "BR Timing (ms)"
+
+# Print the new data frame
+print(BR_Timing)
+
+rm(BR_Timing_data, elbow_position_index)
+```
+
+
+```{r Calculate Phase Durations and save as "Phases"}
+# Calculate each phase
+stride_ms <- (FFC_index - BFC_index) * 10
+transition_ms <- (MAW_index - FFC_index) * 10
+acceleration_ms <- (BR_index - MAW_index) * 10
+follow_through_ms <- (EFT_index - BR_index) * 10
+total_ms <- (EFT_index - BFC_index) * 10
+
+# Create a new data frame for Phases
+Phases <- data.frame(
+`Stride (ms)` <- stride_ms,
+`Transition (ms)` <- transition_ms,
+`Acceleration (ms)` <- acceleration_ms,
+`Follow Through (ms)` <- follow_through_ms,
+`Total (ms)` <- total_ms)
+
+# Rename Columns
+colnames(Phases) <- c("Stride (ms)", "Transition (ms)", "Acceleration (ms)", "Follow Through (ms)", "Total (ms)")
+
+```
+
+
+```{r Calculate maximum for "Shoulder H Abduction Velocity" between BFC_index and BR_index}
+Shoulder_HAbd_Velocity <- max(data$`Shoulder H Abduction Velocity`[BFC_index:BR_index], na.rm = TRUE)
+```
+
+ 
+```{r Extract data at each event}
+# Create a list of indices and corresponding names
+event_indices <- list(
+  BFC = BFC_index,
+  FFC = FFC_index,
+  MAW = MAW_index,
+  BR = BR_index,
+  EFT = EFT_index)
+
+# Create 'at_events' data frame
+at_events <- data.frame(Event = character(0), stringsAsFactors = FALSE)
+
+# Populate 'at_events' with index names and corresponding rows
+for (event_type in names(event_indices)) {
+  index <- event_indices[[event_type]]
+  if (!is.na(index)) {
+    row_data <- data[index, ]
+    row_data$Event <- event_type
+    at_events <- rbind(at_events, row_data)
+  }
+}
+
+# Reorder columns to have 'Event' as the first column
+at_events <- at_events[, c("Event", setdiff(names(at_events), "Event"))]
+
+# Remove Event and KS columns from final output
+at_events <- at_events %>%
+  select(-Events, -Mass, -`Event - BFC1`, -`Event - BFC2`, 
+         -`Event - FFC`, -`Event - MAW`, -`Event - BR`, -`Event - EFT`) %>%
+  select(`File Name`, everything())
+
+# # Add a column with the file's name
+# at_events <- cbind(`File Name` = file_name, at_events)
+
+print(at_events)
+
+```
+
+```{r Calculate phase changes for every variable (BFC-FFC, FFC-MAW, etc.)}
+# Function to get values for specific events and variables
+get_event_value <- function(data, event, variable) {
+  # Subset data for the event and variable
+  subset <- data[data$Event == event, variable, drop = TRUE]
+  
+  # Check if exactly one value is found
+  if (length(subset) == 1) {
+    return(subset)
+  } else {
+    return(NA)  # Return NA if the event is not found or multiple rows exist
+  }
+}
+
+# Test the function to ensure it's working
+print(get_event_value(at_events, "BFC", "Shoulder Rotation"))
+print(get_event_value(at_events, "FFC", "Shoulder Rotation"))
+
+
+# Define pairs of events you want to compare
+event_pairs <- list(
+  c("BFC", "FFC"),
+  c("FFC", "MAW"),
+  c("MAW", "BR"),
+  c("BR", "EFT")
+)
+
+# Specify the range of columns you want to loop through
+column_range <- 3:ncol(at_events)  # Adjust this range if necessary
+
+# Get the names of the variables in the specified range
+variables <- names(at_events)[column_range]
+
+# Initialize a list to store all differences
+phase_changes_list <- list()
+
+# Loop through each pair of events and calculate differences
+for (pair in event_pairs) {
+  event1 <- pair[1]
+  event2 <- pair[2]
+  
+  # Calculate differences for each variable in the specified range
+  differences <- sapply(variables, function(var) {
+    value1 <- get_event_value(at_events, event1, var)
+    value2 <- get_event_value(at_events, event2, var)
+    difference <- value2 - value1
+    return(difference)
+  })
+  
+  # Create a phase name using the events
+  phase_name <- paste(" (", event1, " to ", event2, ")", sep = "")
+  
+  # Convert differences to a dataframe
+  differences_df <- as.data.frame(t(differences))
+  
+  # Rename columns by appending the event pair name at the end
+  colnames(differences_df) <- paste0(variables, phase_name)
+  
+  # Store the dataframe in the list
+  phase_changes_list[[phase_name]] <- differences_df
+}
+
+# Combine all phase differences side by side
+phase_changes <- do.call(cbind, phase_changes_list)
+
+library(tidyverse)
+# Adjust column names to remove everything before and including the first period
+colnames(phase_changes) <- sapply(colnames(phase_changes), function(name) {
+  # Locate the position of the first period
+  loc <- str_locate(name, "\\.")
+  
+  # If a period is found, remove everything up to and including the period
+  if (!is.na(loc[1])) {
+    return(substr(name, loc[1] + 1, nchar(name)))
+  } else {
+    return(name)  # Return name as is if no period is found
+  }
+})
+
+# Remove row names
+rownames(phase_changes) <- NULL
+
+# Select columns of interest (90 in total)
+phase_changes <- phase_changes %>%
+  select(11:12, 16:26, 31, 33, 35:46, 60:61, 64:71, 73:77, 
+         106:107, 110:138, 156:162, 169, 172:175, 179:182, 184)
+
+# Print the results
+print(phase_changes)
+
+```
+
+ 
+```{r Calculate minimum and maximum values for each column in 'data'}
+min_values <- sapply(data, min, na.rm = TRUE)
+max_values <- sapply(data, max, na.rm = TRUE)
+
+# Create 'MinMax' data frame with min and max values
+MinMax <- data.frame(rbind(min_values, max_values), check.names = FALSE)
+rownames(MinMax) <- NULL # Remove row names
+
+# Add a column with labels "min" and "max"
+MinMax$Event <- c("Min", "Max")
+
+# Add a column with the trial name
+MinMax$`File Name` <- file_name
+
+# Reorder columns to match the original 'data' data frame
+MinMax <- MinMax %>%
+  select(`File Name`, Event, everything())
+
+# Remove Event columns
+MinMax <- MinMax %>%
+  select(-Events, -Mass, -`Event - BFC1`, -`Event - BFC2`, 
+         -`Event - FFC`, -`Event - MAW`, -`Event - BR`, -`Event - EFT`)
+
+# Add minimum and maximum values to bottom of 'at_events' data frame
+at_events <- rbind(at_events, MinMax)
+
+rm(max_values, min_values, MinMax)
+
+print(at_events)
+
+```
+
+ 
+```{r Calculate the % of min and max indexes}
+frame_perc <- 100 / range
+
+# Initialise data frames to store minimum and maximum percentage indices
+min_df <- data.frame(matrix(NA, nrow = 1, ncol = ncol(data)))
+max_df <- data.frame(matrix(NA, nrow = 1, ncol = ncol(data)))
+colnames(min_df) <- colnames(max_df) <- colnames(data)  # Set column names to match data
+
+# Specify the range of columns
+columns_of_interest <- 1:ncol(data)  # Example: all columns
+
+# Loop through each column of interest
+for (col_index in columns_of_interest) {
+  col_name <- names(data)[col_index]  # Get the original column name
+  
+  # Find index of minimum and maximum values between BFC_index and EFT_index
+  min_index <- which.min(data[BFC_index:EFT_index, col_index]) + BFC_index - 1
+  max_index <- which.max(data[BFC_index:EFT_index, col_index]) + BFC_index - 1
+  
+  # Calculate the percentage indices
+  min_percentage_index <- (min_index - BFC_index) * frame_perc
+  max_percentage_index <- (max_index - BFC_index) * frame_perc
+  
+  # Store the results in the data frames
+  min_df[, col_index] <- min_percentage_index
+  max_df[, col_index] <- max_percentage_index
+}
+
+# Set column names
+colnames(min_df) <- colnames(max_df) <- names(data)
+
+percentage <- rbind(min_df, max_df)
+rownames(percentage) <- NULL # Remove row names
+
+# Add a column with labels "min" and "max"
+percentage$Event <- c("Min % Index", "Max % Index")
+
+# Add a column with the trial name
+percentage$`File Name` <- file_name
+
+# Reorder columns to match the original 'data' data frame
+percentage <- percentage %>%
+  select(`File Name`, everything()) %>%
+  select(-Mass, -Events, -`Event - BFC1`, -`Event - BFC2`, -`Event - FFC`, -`Event - MAW`, 
+         -`Event - BR`, -`Event - EFT`)
+
+at_events <- rbind(at_events, percentage)
+
+rm(min_df, max_df, percentage, subset_data, col_index, col_name, columns_of_interest, frame_perc,
+   max_index, min_index, max_percentage_index, min_percentage_index, range)
+
+print(at_events)
+
+```
+
+
+```{r Combine 'Shoulder_HAbd_Velocity', 'arm_path', 'BR_Timing', and 'Phases' and add the 'file_name'}
+additional_data <- cbind(file_name, Shoulder_HAbd_Velocity, arm_path, BR_Timing, Phases)
+
+# #  Convert all columns to numeric while preserving the structure
+# additional_data <- as.data.frame(lapply(additional_data, as.numeric))
+
+additional_data <- additional_data %>%
+  mutate(across(2:9, as.numeric))
+
+colnames(additional_data) <- c("File Name", "Shoulder H Abd Velocity (max)", paste0("Arm Path (", "\u00B0", ")"), "BR Timing (ms)", "Stride (ms)", "Transition (ms)", "Acceleration (ms)", "Follow-Through (ms)", "Total (ms)")
+
+# Add File Name to additional_data data frame
+additional_data <- additional_data %>%
+  mutate("File Name" = file_name)
+
+additional_data <- cbind(additional_data, phase_changes)
+
+```
+
+ 
+```{r Save additional_data to the "KOT - Additional Variable Data" folder as the file name}
+# Specify the folder to save the data to
+output_folder <- "C:/Users/billy/OneDrive/Documents/Auburn/Sports Medicine & Movement Lab/PhD Thesis/Data/Main Study/KOT - Additional Variable Data"
+
+# Create the folder if it doesn't exist
+dir.create(output_folder, showWarnings = FALSE)
+
+# Save the data frame to a CSV file in the "Additional Variable Data" folder
+write.csv(additional_data, file = file.path(output_folder, paste0(file_name, ".csv")), row.names = FALSE)
+
+rm(wrist_data, arm_path)
+
+```
+
+
+```{r Save at_events to the "KOT - Event Data" folder as the file name}
+# Save 'at_events' as a CSV file in the folder "Event Data"
+
+# Specify the folder to save the data to
+output_folder <- "C:/Users/billy/OneDrive/Documents/Auburn/Sports Medicine & Movement Lab/PhD Thesis/Data/Main Study/KOT - Event Data"
+
+# Create the folder if it doesn't exist
+dir.create(output_folder, showWarnings = FALSE)
+
+write.csv(at_events, file = file.path(output_folder, paste0(file_name, " (at events).csv")), row.names = FALSE)
+
+# Print a confirmation message
+print(at_events[, 1:3])
+
+# Clean Console
+keep <- c("at_events", "additional_data", "file_name")
+remove <- setdiff(ls(), keep)
+rm(list = remove)
+
+```

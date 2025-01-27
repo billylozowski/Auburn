@@ -1,0 +1,201 @@
+
+```{r}
+# rm(list = ls())
+
+# Let the user select the file to import
+file_path <- file.choose()
+
+# Read the data
+data <- read.delim(file_path, header = TRUE, skip = 8, check.names = FALSE)
+file_name <- tools::file_path_sans_ext(basename(file_path))
+
+# Remove the last column as it's empty
+library(dplyr)
+data <- data %>%
+  select(! 10) # change as necessary
+
+# Define sampling rate (Hz)
+SampleRate <- 238.095 # change as necessary
+
+# Create and events column and populate with 0s
+data$Events <- 0
+
+# Create the column "Time (s)" (divide by sampling rate)
+data$`Time (s)` <- data$`Sample #` / SampleRate
+data$`Time (s)` = round(data$`Time (s)`, 3)
+
+# Add a File Name column
+data$`File Name` <- file_name
+
+data <- data %>%
+  select(`File Name`, `Time (s)`, everything())
+
+```
+
+# INDEX EVENTS
+```{r Index Front Foot Contact (FFC)}
+# find the first instance where FFC exceeds specified threshold
+FFC_index <- which(data$`Event - FFC` > 30)[1] # adjust threshold as necessary
+
+```
+
+```{r Index Initiation (INI)}
+# find the first instance where INI exceeds 0.5 m/s
+INI_index <- which(data$`Event - INI`[(FFC_index - 400):nrow(data)] > 0.5)[1] # adjust threshold as necessary
+INI_index <- FFC_index - (400 - INI_index)
+```
+
+```{r Index Maximum Arm Withdrawal (MAW), eval = FALSE}
+# Find where the arm is most withdrawn behind the trunk (minimum value)
+MAW_index <- which(data$`Event - MAW` == min(data$`Event - MAW`, na.rm = TRUE))[1]
+
+```
+
+```{r Index Maximum External Rotation (MER), eval = FALSE}
+# Find where the arm is most externally rotated (minimum value)
+MER_index <- which(data$`Event - MER` == min(data$`Event - MER`, na.rm = TRUE))[1]
+
+```
+
+```{r Index Ball Release (BR)}
+# Find where the hand's velocity (X) peaks
+BR_index <- which(data$`Event - BR` == max(data$`Event - BR`, na.rm = TRUE))[1]
+
+```
+
+```{r Index End of Follow-Through (EFT) - most posterior position of the hand's COM (X) after BR}
+# Check if ball release has occurred
+if (!is.na(BR_index) && BR_index < nrow(data)) {
+  # Subset the data from ball release + 25 to ball release + 100
+  subset_data <- data[(BR_index + 25):(BR_index + 100), ]
+
+  # Find the index of the row where FT is at its smallest in the subset
+  EFT_index <- which(subset_data$`Event - EFT` == min(subset_data$`Event - EFT`, na.rm = TRUE))[1]
+  
+}
+
+EFT_index <- (BR_index + 25) + EFT_index # determine event index in full data frame
+```
+
+# EVENT MARK INDICES - don't need this bit for ISB!
+```{r Mark each event index in "data" with a '1', eval = FALSE}
+# Mark INI_index with '1'
+if (!is.na(INI_index)) {
+  data$Events[INI_index] <- 1
+}
+
+# Mark FFC_index with '1'
+if (!is.na(FFC_index)) {
+  data$Events[FFC_index] <- 1
+}
+
+# Mark MAW_index + 1 with '1'
+if (!is.na(MAW_index) && MAW_index < nrow(data)) {
+  data$Events[MAW_index] <- 1
+}
+
+# Mark MER_index with '1'
+if (!is.na(MER_index)) {
+  data$Events[MER_index] <- 1
+}
+
+
+# Mark BR_index + 1 with '1'
+if (!is.na(BR_index) && BR_index < nrow(data)) {
+  data$Events[BR_index + 1] <- 1
+}
+
+# Mark EFT_index + 1 with '1'
+if (!is.na(EFT_index)) {
+    data$Events[EFT_index] <- 1
+}
+
+# Check the number of marked events
+sum(data$Events)
+```
+
+# Trim data to desired length
+# Will need to time normalise the trimmed data to 101
+```{r Trim Data between INI and EFT}
+trimmed_data <- data[INI_index:EFT_index, ]
+trimmed_data$`Event - MAW` <- trimmed_data$`Event - MAW` * (-1)
+
+# Original time vector based on the sampling frequency
+original_time <- seq(0, (nrow(trimmed_data) - 1) / SampleRate, length.out = nrow(trimmed_data))
+
+# Define the target time vector for 101 points
+target_time <- seq(min(original_time), max(original_time), length.out = 101)
+
+# Select only the columns of interest (Event - MAW and Event - MER)
+columns_of_interest <- c("Event - MAW", "Event - MER")
+trimmed_data_selected <- trimmed_data[, columns_of_interest]
+
+# Initialize an empty data frame for interpolated data
+interpolated_data <- data.frame(matrix(NA, nrow = 101, ncol = length(columns_of_interest)))
+colnames(interpolated_data) <- columns_of_interest
+
+# Perform interpolation for the selected columns
+for (col in columns_of_interest) {
+  interpolated_data[[col]] <- approx(x = original_time, y = trimmed_data[[col]], xout = target_time, rule = 2)$y
+}
+
+# Output the interpolated data
+interpolated_data$`File Name` <- file_name
+interpolated_data$`Duration %` <- seq(0,100)
+
+interpolated_data <- interpolated_data %>%
+  select(`File Name`, `Duration %`, everything())
+
+# Specify the folder to save the data to
+output_folder <- "C:/Users/billy/OneDrive/Documents/Auburn/Conferences/ISB/2025/MAW vs. MER/Data/Time Normalised Data"
+
+# Create the folder if it doesn't exist
+dir.create(output_folder, showWarnings = FALSE)
+
+write.csv(interpolated_data, file = file.path(output_folder, paste0(file_name, " (101).csv")), row.names = FALSE)
+
+```
+
+```{r}
+# Calculate Frame Percentage for trimmed_data
+frame_percent <- 100 / (EFT_index - INI_index)
+
+# Identify MAW and MER indices within trimmed data
+FFC <- which(trimmed_data$`Event - FFC` > 30)[1]
+MAW <- which(trimmed_data$`Event - MAW` == min(trimmed_data$`Event - MAW`[1:(FFC + 50)], na.rm = TRUE))[1]
+MER <- which(trimmed_data$`Event - MER` == min(trimmed_data$`Event - MER`, na.rm = TRUE))[1]
+MER_val <- min(trimmed_data$`Event - MER`)
+
+# Calculate raw time of MAW and MER within trimmed_data
+MAW_s <- MAW / SampleRate
+MER_s <- MER / SampleRate
+
+# Calculate frame % of MAW and MER within trimmed_data
+MAW_perc <- which(interpolated_data$`Event - MAW` == min(interpolated_data$`Event - MAW`, na.rm = TRUE))[1]
+MER_perc <- which(interpolated_data$`Event - MER` == min(interpolated_data$`Event - MER`, na.rm = TRUE))[1]
+
+summary_data <- data.frame(
+  file_name,
+  MAW_s,
+  MER_s,
+  MAW_perc,
+  MER_perc,
+  MER_val
+)
+
+colnames(summary_data) <- c("File Name", "MAW (s)", "MER (s)","MAW %", "MER %", "MER")
+
+# Specify the folder to save the data to
+output_folder <- "C:/Users/billy/OneDrive/Documents/Auburn/Conferences/ISB/2025/MAW vs. MER/Data/Summary"
+
+# Create the folder if it doesn't exist
+dir.create(output_folder, showWarnings = FALSE)
+write.csv(summary_data, file = file.path(output_folder, paste0(file_name, " (summary).csv")), row.names = FALSE)
+
+print(summary_data)
+
+```
+
+```{r}
+plot(trimmed_data$`Event - MAW`)
+```

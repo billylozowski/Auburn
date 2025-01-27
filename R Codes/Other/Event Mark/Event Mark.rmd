@@ -1,0 +1,245 @@
+
+# This code event marks throwing trials
+
+```{r}
+
+# Let the user select the file to import
+file_path <- file.choose()
+
+# Read the data
+data <- read.delim(file_path, header = TRUE, skip = 8, check.names = FALSE)
+
+# Remove column "47" as it's empty
+library(dplyr)
+data <- data %>%
+  select(! 47)
+
+# Define sampling rate (Hz)
+SampleRate <- 100 # change as necessary
+
+# Create and events column and populate with 0s
+data$Events <- 0
+
+# Create the column "Time (s)" (divide by sampling rate)
+data$`Time (s)` <- data$`Sample #` / SampleRate
+
+library(dplyr)
+
+# Move the 'Events column to the first position and 'Time (s)' to the second position
+data <- data %>% 
+  select(Events, `Time (s)`, everything())
+
+rm(SampleRate)
+
+```
+
+```{r}
+# Front Foot Contact (FFC)
+FFC_condition <- data$`Event - FFC` > 20  # define FFC condition
+
+# Find the index of the first occurrence
+FFC_index <- which(FFC_condition)[1]
+
+# Mark the first frame where the condition is met with '1'
+if (!is.na(FFC_index)) {
+  data$Events[FFC_index] <- 1
+}
+
+rm(FFC_condition)
+
+```
+
+```{r}
+# Back Foot Contact (BFC) - first from where BFC1 crosses from negative to positive, AFTER BFC2!
+
+# BFC1 - ankle acceleration in the Y (vertical)
+# BFC2 - ankle velocity in the X (anteroposterior)
+
+
+# Subset the data frame from the start to FFC_index
+subset_data_BFC2 <- data[1:FFC_index, ]
+
+# Find the index of the maximum value in "Event - BFC2" within the subsetted data
+BFC2_index <- which.max(ifelse(is.na(subset_data_BFC2$`Event - BFC2`), -Inf, subset_data_BFC2$`Event - BFC2`))
+
+# Subset the data frame from the maximum BFC_1 index to the end
+subset_data_BFC1 <- data[(BFC2_index + 1):nrow(data), ]
+
+# Find the first occurrence where BFC1 goes from negative to positive
+BFC1_index <- which.max(diff(sign(subset_data_BFC1$`Event - BFC1`) > 0))
+
+# Calculate the overall index in the original data frame
+BFC_index <- BFC2_index + BFC1_index
+
+# Mark the first frame where the condition is met with '1'
+if (!is.na(BFC_index)) {
+  data$Events[BFC_index +1] <- 1
+}
+  
+rm(BFC2_index, BFC1_index, subset_data_BFC1, subset_data_BFC2)
+
+```
+
+```{r}
+# Arm Acceleration (AA)
+min_AA_value <- min(data$`Event - AA`, na.rm = TRUE)  # calculate minimum value excluding NAs
+AA_condition <- data$`Event - AA` == min_AA_value  # define AA condition
+
+# Find the index of the first occurrence after the minimum value
+AA_index <- which(AA_condition)[1]
+
+# Mark the first frame after the minimum value in AA with '1'
+if (!is.na(AA_index) && AA_index < nrow(data)) {
+  data$Events[AA_index] <- 1
+}
+
+rm(AA_condition, min_AA_value)
+
+```
+
+```{r}
+# Ball Release (BR)
+max_BR_value <- max(data$`Hand COM Velocity (X)`, na.rm = TRUE) # calculate maximum value excluding NAs
+BR_condition <- data$`Hand COM Velocity (X)` == max_BR_value # define BR condition
+
+# Find the index of the the maximum value
+BR_index <- which(BR_condition)[1]
+
+# Index the first frame after the occurrence of BR_index
+if (!is.na(BR_index) && BR_index < nrow(data)) {
+  data$Events[BR_index + 1] <- 1
+}
+
+rm(BR_condition, max_BR_value)
+
+```
+
+```{r}
+# Follow-Through (FT) - currently using MIR instead of shoulder abduction!!
+
+# Check if ball release has occurred
+if (!is.na(BR_index) && BR_index < nrow(data)) {
+  # Subset the data from ball release to the end
+  subset_data <- data[BR_index:nrow(data), ]
+
+  # Find the index of the row where FT is at its smallest in the subset
+  FT_index <- which(subset_data$`Event - FT` == max(subset_data$`Event - FT`, na.rm = TRUE))[1]
+
+  # Mark the row where FT is at its smallest after ball release with '1' in the original data
+  if (!is.na(FT_index)) {
+    data$Events[BR_index + FT_index] <- 1
+  }
+}
+
+FT_index <- BR_index + FT_index # determine event index in full data frame
+
+rm(subset_data)
+
+```
+
+```{r}
+# Check the number of marked events
+sum(data$Events)
+
+```
+
+```{r}
+# Save 'data' as a tab-delimited text file, overwriting the original .txt file
+write.table(data, file = file_path, sep = "\t", row.names = FALSE, col.names = TRUE)
+
+# Print a confirmation message
+print(paste("Data saved to:", file_path))
+
+```
+
+```{r}
+# Create a list of indices and corresponding names
+event_indices <- list(
+  BFC = BFC_index,
+  FFC = FFC_index,
+  AA = AA_index,
+  BR = BR_index,
+  FT = FT_index)
+
+# Create 'At_Events' data frame
+At_Events <- data.frame(Event = character(0), stringsAsFactors = FALSE)
+
+# Populate 'At_Events' with index names and corresponding rows
+for (event_type in names(event_indices)) {
+  index <- event_indices[[event_type]]
+  if (!is.na(index)) {
+    row_data <- data[index, ]
+    row_data$Event <- event_type
+    At_Events <- rbind(At_Events, row_data)
+  }
+}
+
+# Reorder columns to have 'Event' as the first column
+At_Events <- At_Events[, c("Event", setdiff(names(At_Events), "Event"))]
+
+# Remove Event and KS columns from final output
+At_Events <- At_Events %>%
+  select(-Events, -Height, -Mass, -`Event - BFC1`, -`Event - BFC2`, 
+         -`Event - FFC`, -`Event - AA`, -`Event - BR`, -`Event - FT`,
+         -`Pelvis Velocity (KS)`, -`Trunk (KS)`, -`Upper Arm (KS)`, 
+         -`Forearm (KS)`, -`Hand (KS)`)
+
+# Add a column with the file's name
+file_name <- tools::file_path_sans_ext(basename(file_path))
+At_Events <- cbind(`File Name` = file_name, At_Events)
+
+```
+
+```{r}
+# Calculate minimum and maximum values for each column in 'data'
+min_values <- sapply(data, min, na.rm = TRUE)
+max_values <- sapply(data, max, na.rm = TRUE)
+
+# Create 'MinMax' data frame with min and max values
+MinMax <- data.frame(rbind(min_values, max_values), check.names = FALSE)
+rownames(MinMax) <- NULL # Remove row names
+
+# Add a column with labels "min" and "max"
+MinMax$Event <- c("Min", "Max")
+
+# Add a column with the trial name
+file_name <- tools::file_path_sans_ext(basename(file_path))
+MinMax$`File Name` <- file_name
+
+# Reorder columns to match the original 'data' data frame
+MinMax <- MinMax[, c("File Name", "Event", names(data))]
+
+# Remove Event columns
+MinMax <- MinMax %>%
+  select(-Events, -Height, -Mass, -`Event - BFC1`, -`Event - BFC2`, 
+         -`Event - FFC`, -`Event - AA`, -`Event - BR`, -`Event - FT`,
+         -`Pelvis Velocity (KS)`, -`Trunk (KS)`, -`Upper Arm (KS)`, 
+         -`Forearm (KS)`, -`Hand (KS)`)
+
+# Add minimum and maximum values to bottom of 'At_Events' data frame
+At_Events <- rbind(At_Events, MinMax)
+
+rm(max_values, min_values, MinMax)
+
+```
+
+
+```{r}
+# Save 'At_Events' as a CSV file in the same directory as the original .txt file
+write.csv(At_Events, file = file.path(dirname(file_path), paste0(file_name, " (at events).csv")), row.names = FALSE)
+
+# Print a confirmation message
+print(At_Events[, 1:3])
+
+```
+
+```{r}
+# Clean Console
+rm(BFC_index, FFC_index, AA_index, BR_index, FT_index, event_type, event_indices, index, row_data)
+
+# Once I have event marked trials, I will look to determine the duration between events (phases).
+
+# I also want to find the angular displacement across phases (current value - previous value).
+
+```
+

@@ -1,0 +1,112 @@
+# This code will extract variables of interest at specific events, as well as
+# calculating temporal variables
+```{r}
+# Load the long data file (all participants' trials and events, not Means and SDs)
+
+rm(list = ls())
+
+# Load the desired file
+file_path <- file.choose()
+
+data <- read.csv(file_path, check.names = FALSE) 
+
+# Create event data frames
+
+library(dplyr)
+
+# BFC data - (need to add back knee flexion vs)
+BFC_data <- data %>%
+  filter(Event =="BFC") %>%
+  select(`File Name`, `Time (s)`, `COM Velocity (X)`, `Pelvis Rotation (Y)`, `Trunk Rotation (Y)`,
+         `Trunk Flexion`, `Shoulder Abduction`, `Shoulder H Abduction`, `Elbow Flexion`, `COM Displacement (Z)`) %>%
+  rename_with(~paste0(.x, " @ BFC"), .names = "{.col}")
+
+# FFC data - (stride length needs to be % height)
+FFC_data <- data %>% 
+  filter(Event == "FFC") %>% 
+  select(`File Name`, `Time (s)`, `Stride Length (% Height)`, `Stride Angle`, `Knee Flexion`, 
+         `Pelvis Rotation (Y)`, `Trunk Rotation (Y)`, `Trunk Flexion`, `Shoulder Abduction`, 
+         `Shoulder H Abduction`, `Elbow Flexion`, `COM Velocity (X)`, `COM Displacement (Z)`) %>%
+         # "Shoulder Abduction SD", "Shoulder H Abduction SD", "Trunk Flexion SD") 
+  rename_with(~paste0(.x, " @ FFC"), .names = "{.col}")
+
+# MAW data
+MAW_data <- data %>% 
+  filter(Event == "MAW") %>% 
+  select(`File Name`, `Time (s)`, `Knee Flexion`, `Pelvis Rotation (Y)`, `Trunk Rotation (Y)`,
+         `Shoulder Abduction`, `Shoulder H Abduction`, `Elbow Flexion`) %>%
+         # "Shoulder H Abduction SD", "Shoulder Rotation SD") 
+  rename_with(~paste0(.x, " @ MAW"), .names = "{.col}")
+
+# BR data
+BR_data <- data %>% 
+  filter(Event == "BR") %>% 
+  select(`File Name`, `Time (s)`, `Knee Flexion`, `Pelvis Rotation (Y)`, `Trunk Flexion`, 
+         `Trunk Rotation (Y)`, `Lateral Trunk Flexion`, `Shoulder Abduction`, `Shoulder H Abduction`, 
+         `Elbow Flexion`, `COM Displacement (Z)`, `COM Displacement (Z)`) %>%
+  rename_with(~paste0(.x, " @ BR"), .names = "{.col}")
+
+# EFT data
+EFT_data <- data %>%
+   filter(Event == "EFT") %>%
+   select(`File Name`, `Time (s)`, "Knee Flexion", "Shoulder Abduction", "Shoulder H Abduction",
+          "Shoulder Rotation", "Elbow Flexion") %>%
+   rename_with(~paste0(.x, " @ EFT"), .names = "{.col}")
+ 
+# Max data (need to calculate mins and maxes first)
+ Max_data <- data %>%
+   filter(Event == "Max") %>%
+   select(`Knee Extension Velocity`, `Pelvis Rotation Velocity`, `Trunk Rotation Velocity`,
+         `Trunk Flexion Velocity`, `Trunk Flexion`, `Shoulder Rotation Velocity`, `Elbow Flexion`) %>%
+   rename_with(~paste0(.x, " (max)"), .names = "{.col}")
+
+# Min data
+ Min_data <- data %>%
+   filter(Event == "Min") %>%
+   select(`Shoulder Rotation`, `Shoulder H Abduction Velocity`, `Elbow Extension Velocity`,
+          "Forearm Pronation") %>%
+   rename_with(~paste0(.x, " (max)"), .names = "{.col}")
+ 
+# Timing data
+ Max_timing_data <- data %>%
+   filter(Event == "Max % Index") %>%
+   select(`Knee Extension Velocity`, `Pelvis Rotation Velocity`, `Trunk Rotation Velocity`,
+         `Trunk Flexion Velocity`) %>%
+   rename_with(~paste0(.x, " (timing)"), .names = "{.col}")
+ 
+ Min_timing_data <- data %>%
+   filter(Event == "Min % Index") %>%
+   select(`Shoulder H Abduction Velocity`, `Elbow Extension Velocity`) %>%
+   rename_with(~paste0(.x, " (timing)"), .names = "{.col}")
+ 
+```
+
+
+```{r}
+# Combine Event data into one data frame (Variables of Interest [VOI])
+VOI_data <- cbind(BFC_data, FFC_data, MAW_data, BR_data, Max_data, Min_data, Max_timing_data, Min_timing_data) %>%
+  select(-`File Name @ FFC`, -`File Name @ MAW`, -`File Name @ BR`) #, -`File Name (max)`)
+
+VOI_data$`COM Displacement (Z) @ FFC` <- FFC_data$`COM Displacement (Z)` - BFC_data$`COM Displacement (Z)` # COM Displacement @ FFC
+VOI_data$`COM Displacement (Z) @ BR` <- BR_data$`COM Displacement (Z)` - BFC_data$`COM Displacement (Z)` # COM Displacement @ BR
+
+# Remove " @ BFC" from the "File Name @ FFC" column
+VOI_data$`File Name @ BFC` <- sub(" @ BFC$", "", VOI_data$`File Name @ BFC`)
+
+```
+
+
+```{r}
+# Specify the folder to save the data to
+output_folder <- "C:/Users/billy/OneDrive/Documents/Auburn/Sports Medicine & Movement Lab/PhD Thesis/Data/Pilot Study/KOT - Combined Data/Combined Data (pilot)"
+
+# Create the folder if it doesn't exist
+dir.create(output_folder, showWarnings = FALSE)
+
+# Save 'VOI_data' as a CSV file
+write.csv(VOI_data, "C:/Users/billy/OneDrive/Documents/Auburn/Sports Medicine & Movement Lab/PhD Thesis/Data/Pilot Study/KOT - Combined Data/Combined Data (pilot)/Variables of Interest (all participants).csv", 
+          row.names = FALSE)
+
+rm(list = ls())
+
+```

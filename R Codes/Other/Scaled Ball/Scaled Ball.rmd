@@ -1,0 +1,51 @@
+```{r}
+# LOAD RELEVANT PACKAGES
+library(readr)
+library(readxl)
+library(dplyr)
+
+# Let the user select the file to import
+file_path <- file.choose()
+
+```
+
+```{r}
+# IMPORT AND CLEAN THE DATA
+
+# Read the file and name columns
+data <- read_excel(file_path, sheet = "Anthro Data", col_names = TRUE) %>%
+  arrange(Age)
+
+# Select relevant columns
+data <- data[, c(1:11)]
+
+# # Add 'Size Difference' column
+# data$`Size Difference` <- data$`Recommended Ball (2-5)` - data$`Preferred Ball (1-5)`
+
+```
+
+```{r}
+# DEFINE AGE GROUPS
+
+data <- data %>%
+  mutate(`Age Group` = case_when(
+    Age >=7 & Age <= 8 ~ "7-8",
+    Age >=9 & Age <= 10 ~ "9-10",
+    Age >=11 & Age <= 12 ~ "11-12",
+    Age >=13 & Age <= 14 ~ "13-14",
+    TRUE ~ "Other"
+  )) %>%
+  arrange(`Age Group`)
+
+```
+
+```{r}
+# SUMMARISE PARTICIPANTS BY AGE
+
+# Summarise Data
+agegroup_summary <- data %>%
+  group_by(`Age Group`) %>%
+  summarise(Count = n())
+
+```
+
