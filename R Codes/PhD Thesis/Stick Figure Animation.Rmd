@@ -1,0 +1,124 @@
+---
+title: "Stick Figure Animation"
+author: "Billy Lozowski"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+If this is the first time using it, install gganimate -  install.packages("gganimate")
+
+```{r Setup}
+# Load the required packages from the library
+library(readr)
+library(tidyverse)
+library(gganimate)
+library(plotly) # this ill be used when creating a 3D figure
+```
+
+```{r Load Data}
+file_path <- file.choose() # choose the file
+df <- read.delim(file_path, header = TRUE, skip = 8, check.names = FALSE) # read in the table and remove the first 8 rows
+file_name <- tools::file_path_sans_ext(basename(file_path)) # extract he file name
+
+df$Time <- df$`Sample #` * 0.01 # create a time column dependent on sampling freq.
+df <- df %>%
+  select(-83)
+df <- df %>%
+  select(Time, everything()) # reorganise so time is the first column
+```
+
+```{r Event Mark & Trim}
+# FFC
+FFC_index <- which(df$`Event - FFC` > 20)[1] # adjust threshold as necessary
+
+# BFC1 - ankle acceleration in the Y (vertical)
+# BFC2 - ankle velocity in the X (anteroposterior)
+
+subset_data_BFC2 <- df[1:FFC_index, ] # Subset the data frame from the start to FFC_index
+
+# Find the index of the maximum value in "Event - BFC2" within the subsetted data
+BFC2_index <- which.max(ifelse(is.na(subset_data_BFC2$`Event - BFC2`), -Inf, subset_data_BFC2$`Event - BFC2`))
+# Subset the data frame from the maximum BFC_1 index to the end (may be better to FFC_index)
+subset_data_BFC1 <- df[(BFC2_index + 1):nrow(df), ]
+# Find the first occurrence where BFC1 goes from negative to positive
+BFC1_index <- which.max(diff(sign(subset_data_BFC1$`Event - BFC1`) > 0))
+# Calculate the overall index in the original data frame
+BFC_index <- BFC2_index + BFC1_index
+
+# MAW
+MAW_index <- which(df$`Event - MAW` == min(df$`Event - MAW`, na.rm = TRUE))[1]
+
+# BR
+BR_index <- which.max(df$`Event - BR`)[1]
+
+# EFT
+df_subset <- df[BR_index:nrow(df), ]
+EFT_index <- (which(df_subset$`Event - BR` <= 0)[1]) + BR_index
+
+# trimmed data frame
+df_final <- df_subset[BFC_index:EFT_index, ]
+```
+
+```{r Plot Stick Figure - side view}
+stick_side <- ggplot(df) +
+  
+  # left leg
+  geom_segment(aes(x = L_toe_X, y = L_toe_Y, xend = L_ankle_X, yend = L_ankle_Y), linewidth = 1.5, colour = '#FF0000') +     # left foot
+  geom_segment(aes(x = L_ankle_X, y = L_ankle_Y, xend = L_knee_X, yend = L_knee_Y), linewidth = 1.5, colour = '#FF0000') +   # left shank  
+  geom_segment(aes(x = L_knee_X, y = L_knee_Y, xend = L_hip_X, yend = L_hip_Y), linewidth = 1.5, colour = '#FF0000') +       # left thigh 
+  
+  # left arm
+  geom_segment(aes(x = L_shoulder_X, y = L_shoulder_Y, xend = L_elbow_X, yend = L_elbow_Y), linewidth = 1.5, colour = '#FF0000') +
+  geom_segment(aes(x = L_elbow_X, y = L_elbow_Y, xend = L_wrist_X, yend = L_wrist_Y), linewidth = 1.5, colour = '#FF0000') +
+  geom_segment(aes(x = L_wrist_X, y = L_wrist_Y, xend = L_finger_X, yend = L_finger_Y), linewidth = 1.5, colour = '#FF0000') +
+  
+  # pelvis
+  #geom_segment(aes(x = R_ASIS_X, y = R_ASIS_Y, xend = R_PSIS_X, yend = R_PSIS_Y), linewidth = 1.5) +     # lateral pelvis (r)*
+  #geom_segment(aes(x = L_ASIS_X, y = L_ASIS_Y, xend = L_PSIS_X, yend = L_PSIS_Y), linewidth = 1.5) +     # lateral pelvis (l)*
+  #geom_segment(aes(x = R_ASIS_X, y = R_ASIS_Y, xend = L_ASIS_X, yend = L_ASIS_Y), linewidth = 1.5) +     # anterior pelvis*
+  #geom_segment(aes(x = R_PSIS_X, y = R_PSIS_Y, xend = L_PSIS_X, yend = L_PSIS_Y), linewidth = 1.5) +     # posterior pelvis*
+  #geom_segment(aes(x = R_ASIS_X, y = R_ASIS_Y, xend = R_hip_X, yend = R_hip_Y), linewidth = 1.5) +       # ASIS to hip (r)*
+  #geom_segment(aes(x = L_ASIS_X, y = L_ASIS_Y, xend = L_hip_X, yend = L_hip_Y), linewidth = 1.5) +       # ASIS to hip (l)*
+  #geom_segment(aes(x = R_PSIS_X, y = R_PSIS_Y, xend = R_hip_X, yend = R_hip_Y), linewidth = 1.5) +       # PSIS to hip (r)*
+  #geom_segment(aes(x = L_PSIS_X, y = L_PSIS_Y, xend = L_hip_X, yend = L_hip_Y), linewidth = 1.5) +       # PSIS to hip (l)()
+  geom_segment(aes(x = R_hip_X, y = R_hip_Y, xend = L_hip_X, yend = L_hip_Y), linewidth = 1.5) +         # hip to hip*
+  
+  # lumbar spine
+  geom_segment(aes(x = L5S1_X, y = L5S1_Y, xend = L1_X, yend = L1_Y), linewidth = 1.5) + # L5/S1 to T12/L1
+  
+  # thorax
+  geom_segment(aes(x = C7T1_X, y = C7T1_Y, xend = L_shoulder_X, yend = L_shoulder_Y), linewidth = 1.5) +          # C7/T1 to L shoulder
+  geom_segment(aes(x = L1_X, y = L1_Y, xend = L_shoulder_X, yend = L_shoulder_Y), linewidth = 1.5) +              # T12/L1 to L shoulder
+  geom_segment(aes(x = L1_X, y = L1_Y, xend = C7T1_X, yend = C7T1_Y), linewidth = 1.5) +                          # T12/L1 to C7/T1
+  #geom_segment(aes(x = JugNotch_X, y = JugNotch_Y, xend = L_shoulder_X, yend = L_shoulder_Y), linewidth = 1.5) + # jug notch to L shoulder*
+  #geom_segment(aes(x = L1_X, y = L1_Y, xend = JugNotch_X, yend = JugNotch_Y), linewidth = 1.5) +                 # T12/L1 to jug notch*
+  #geom_segment(aes(x = C7T1_X, y = C7T1_Y, xend = JugNotch_X, yend = JugNotch_Y), linewidth = 1.5) +             # C7/T1 to jug notch*
+  geom_segment(aes(x = C7T1_X, y = C7T1_Y, xend = R_shoulder_X, yend = R_shoulder_Y), linewidth = 1.5) +          # C7/T1 to R shoulder
+  geom_segment(aes(x = L1_X, y = L1_Y, xend = R_shoulder_X, yend = R_shoulder_Y), linewidth = 1.5) +              # T12/L1 to R shoulder
+  #geom_segment(aes(x = JugNotch_X, y = JugNotch_Y, xend = R_shoulder_X, yend = R_shoulder_Y), linewidth = 1.5) + # jug notch to R shoulder*
+  
+  # right leg
+  geom_segment(aes(x = R_toe_X, y = R_toe_Y, xend = R_ankle_X, yend = R_ankle_Y), linewidth = 1.5, colour = '#0800FF') +     # right foot
+  geom_segment(aes(x = R_ankle_X, y = R_ankle_Y, xend = R_knee_X, yend = R_knee_Y), linewidth = 1.5, colour = '#0800FF') +   # right shank
+  geom_segment(aes(x = R_knee_X, y = R_knee_Y, xend = R_hip_X, yend = R_hip_Y), linewidth = 1.5, colour = '#0800FF') +       # right thigh
+ 
+  # right arm
+  geom_segment(aes(x = R_shoulder_X, y = R_shoulder_Y, xend = R_elbow_X, yend = R_elbow_Y), linewidth = 1.5, colour = '#0800FF') +
+  geom_segment(aes(x = R_elbow_X, y = R_elbow_Y, xend = R_wrist_X, yend = R_wrist_Y), linewidth = 1.5, colour = '#0800FF') +
+  geom_segment(aes(x = R_wrist_X, y = R_wrist_Y, xend = R_finger_X, yend = R_finger_Y), linewidth = 1.5, colour = '#0800FF') +
+  
+  # set theme
+  theme_void() +
+  labs(x = NULL,
+       y = NULL) +
+  coord_fixed(ratio = 1) + # set the x to y axis ratio as 1 (y=x)
+  transition_time(`Sample #`)
+
+  # render the stick figure animation 
+  animate(stick_side, nframes = nrow(df), fps = 25, renderer = gifski_renderer())
+```  
+  # save the animation
+  anim_save("stick figure.gif", animation)
+  
+```
+
