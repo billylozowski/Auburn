@@ -27,7 +27,7 @@ df <- df %>%
   select(Time, everything()) # reorganise so time is the first column
 ```
 
-```{r Event Mark & Trim}
+```{r Event Mark & Trim, eval=FALSE}
 # FFC
 FFC_index <- which(df$`Event - FFC` > 20)[1] # adjust threshold as necessary
 
@@ -65,7 +65,17 @@ if (!is.na(BR_index) && BR_index < nrow(df)) {
 EFT_index <- (BR_index + 10) + EFT_index # determine event index in full data frame
 
 # trimmed data frame
-df_final <- df_subset[BFC_index:EFT_index, ]
+df_final <- df[BFC_index:EFT_index, ]
+```
+
+```{r Input event indices if known already. Be sure to change these for each trial!}
+BFC_index <- 74
+FFC_index <- 101
+MAW_index <- 103
+BR_index <- 122
+EFT_index <- 146
+
+# df_final <- df[(BFC_index-25):(EFT_index+25), ] use this code if you want to trim the df with a buffer to the motion's duration. Adjust buffer (+- 25) as required.
 ```
 
 ```{r Animated Stick Figure - side}
