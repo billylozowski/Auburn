@@ -68,8 +68,7 @@ EFT_index <- (BR_index + 10) + EFT_index # determine event index in full data fr
 df_final <- df_subset[BFC_index:EFT_index, ]
 ```
 
-```{r Plot Stick Figure}
-# side-on view
+```{r Animated Stick Figure - side}
 stick_side <- ggplot(df) +
   
   # left leg
@@ -129,8 +128,9 @@ stick_side <- ggplot(df) +
   
   # save the animation
   anim_save(paste0(file_name, " (side).gif"), stick_side)
-  
-# front-on view
+```
+
+```{r Animated Stick Figure - front}
 stick_front <- ggplot(df) +
   
   # left leg
