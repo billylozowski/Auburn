@@ -46,20 +46,30 @@ BFC1_index <- which.max(diff(sign(subset_data_BFC1$`Event - BFC1`) > 0))
 BFC_index <- BFC2_index + BFC1_index
 
 # MAW
-MAW_index <- which(df$`Event - MAW` == min(df$`Event - MAW`, na.rm = TRUE))[1]
+MAW_index <- which.min(df$`Event - MAW` == min(df$`Event - MAW`, na.rm = TRUE))[1]
 
 # BR
 BR_index <- which.max(df$`Event - BR`)[1]
 
 # EFT
-df_subset <- df[BR_index:nrow(df), ]
-EFT_index <- (which(df_subset$`Event - BR` <= 0)[1]) + BR_index
+# Check if ball release has occurred
+if (!is.na(BR_index) && BR_index < nrow(df)) {
+  # Subset the data from ball release to ball release +100
+  subset_data <- df[(BR_index + 10):(BR_index + 50), ]
+
+  # Find the index of the row where FT is at its smallest in the subset
+  EFT_index <- which(subset_data$`Event - EFT` == min(subset_data$`Event - EFT`, na.rm = TRUE))[1]
+  
+}
+
+EFT_index <- (BR_index + 10) + EFT_index # determine event index in full data frame
 
 # trimmed data frame
 df_final <- df_subset[BFC_index:EFT_index, ]
 ```
 
-```{r Plot Stick Figure - side view}
+```{r Plot Stick Figure}
+# side-on view
 stick_side <- ggplot(df) +
   
   # left leg
@@ -115,10 +125,524 @@ stick_side <- ggplot(df) +
   transition_time(`Sample #`)
 
   # render the stick figure animation 
-  animate(stick_side, nframes = nrow(df), fps = 25, renderer = gifski_renderer())
-```  
-  # save the animation
-  anim_save("stick figure.gif", animation)
+  animate(stick_side, nframes = nrow(df), fps = 50, renderer = gifski_renderer())
   
+  # save the animation
+  anim_save(paste0(file_name, " (side).gif"), stick_side)
+  
+# front-on view
+stick_front <- ggplot(df) +
+  
+  # left leg
+  geom_segment(aes(x = L_toe_Z, y = L_toe_Y, xend = L_ankle_Z, yend = L_ankle_Y), linewidth = 1.5, colour = '#FF0000') +     # left foot
+  geom_segment(aes(x = L_ankle_Z, y = L_ankle_Y, xend = L_knee_Z, yend = L_knee_Y), linewidth = 1.5, colour = '#FF0000') +   # left shank  
+  geom_segment(aes(x = L_knee_Z, y = L_knee_Y, xend = L_hip_Z, yend = L_hip_Y), linewidth = 1.5, colour = '#FF0000') +       # left thigh 
+  
+  # left arm
+  geom_segment(aes(x = L_shoulder_Z, y = L_shoulder_Y, xend = L_elbow_Z, yend = L_elbow_Y), linewidth = 1.5, colour = '#FF0000') +
+  geom_segment(aes(x = L_elbow_Z, y = L_elbow_Y, xend = L_wrist_Z, yend = L_wrist_Y), linewidth = 1.5, colour = '#FF0000') +
+  geom_segment(aes(x = L_wrist_Z, y = L_wrist_Y, xend = L_finger_Z, yend = L_finger_Y), linewidth = 1.5, colour = '#FF0000') +
+  
+  # pelvis
+  geom_segment(aes(x = R_hip_Z, y = R_hip_Y, xend = L_hip_Z, yend = L_hip_Y), linewidth = 1.5) +         # hip to hip*
+  
+  # lumbar spine
+  geom_segment(aes(x = L5S1_Z, y = L5S1_Y, xend = L1_Z, yend = L1_Y), linewidth = 1.5) + # L5/S1 to T12/L1
+  
+  # thorax
+  geom_segment(aes(x = C7T1_Z, y = C7T1_Y, xend = L_shoulder_Z, yend = L_shoulder_Y), linewidth = 1.5) +          # C7/T1 to L shoulder
+  geom_segment(aes(x = L1_Z, y = L1_Y, xend = L_shoulder_Z, yend = L_shoulder_Y), linewidth = 1.5) +             # T12/L1 to L shoulder
+  geom_segment(aes(x = L1_Z, y = L1_Y, xend = C7T1_Z, yend = C7T1_Y), linewidth = 1.5) +                         # C7/T1 to jug notch*
+  geom_segment(aes(x = C7T1_Z, y = C7T1_Y, xend = R_shoulder_Z, yend = R_shoulder_Y), linewidth = 1.5) +          # C7/T1 to R shoulder
+  geom_segment(aes(x = L1_Z, y = L1_Y, xend = R_shoulder_Z, yend = R_shoulder_Y), linewidth = 1.5) +    
+  
+  # right leg
+  geom_segment(aes(x = R_toe_Z, y = R_toe_Y, xend = R_ankle_Z, yend = R_ankle_Y), linewidth = 1.5, colour = '#0800FF') +     # right foot
+  geom_segment(aes(x = R_ankle_Z, y = R_ankle_Y, xend = R_knee_Z, yend = R_knee_Y), linewidth = 1.5, colour = '#0800FF') +   # right shank
+  geom_segment(aes(x = R_knee_Z, y = R_knee_Y, xend = R_hip_Z, yend = R_hip_Y), linewidth = 1.5, colour = '#0800FF') +       # right thigh
+ 
+  # right arm
+  geom_segment(aes(x = R_shoulder_Z, y = R_shoulder_Y, xend = R_elbow_Z, yend = R_elbow_Y), linewidth = 1.5, colour = '#0800FF') +
+  geom_segment(aes(x = R_elbow_Z, y = R_elbow_Y, xend = R_wrist_Z, yend = R_wrist_Y), linewidth = 1.5, colour = '#0800FF') +
+  geom_segment(aes(x = R_wrist_Z, y = R_wrist_Y, xend = R_finger_Z, yend = R_finger_Y), linewidth = 1.5, colour = '#0800FF') +
+  
+  # set theme
+  theme_void() +
+  labs(x = NULL,
+       y = NULL) +
+  scale_x_reverse() +  # Flip the figure horizontally
+  coord_fixed(ratio = 1) +
+  transition_time(`Sample #`)
+
+  # render the stick figure animation 
+  animate(stick_front, nframes = nrow(df), fps = 50, renderer = gifski_renderer())
+  
+  # save the animation
+  anim_save(paste0(file_name, " (front).gif"), stick_front)
+```  
+  
+```{r BFC}
+df_BFC <- df[BFC_index, ]
+
+# side view
+stick_BFC_side <- ggplot(df_BFC) +
+  
+  # left leg
+  geom_segment(aes(x = L_toe_X, y = L_toe_Y, xend = L_ankle_X, yend = L_ankle_Y), linewidth = 1.5, colour = '#FF0000') +     # left foot
+  geom_segment(aes(x = L_ankle_X, y = L_ankle_Y, xend = L_knee_X, yend = L_knee_Y), linewidth = 1.5, colour = '#FF0000') +   # left shank  
+  geom_segment(aes(x = L_knee_X, y = L_knee_Y, xend = L_hip_X, yend = L_hip_Y), linewidth = 1.5, colour = '#FF0000') +       # left thigh 
+  
+  # left arm
+  geom_segment(aes(x = L_shoulder_X, y = L_shoulder_Y, xend = L_elbow_X, yend = L_elbow_Y), linewidth = 1.5, colour = '#FF0000') +
+  geom_segment(aes(x = L_elbow_X, y = L_elbow_Y, xend = L_wrist_X, yend = L_wrist_Y), linewidth = 1.5, colour = '#FF0000') +
+  geom_segment(aes(x = L_wrist_X, y = L_wrist_Y, xend = L_finger_X, yend = L_finger_Y), linewidth = 1.5, colour = '#FF0000') +
+  
+  # pelvis
+  geom_segment(aes(x = R_hip_X, y = R_hip_Y, xend = L_hip_X, yend = L_hip_Y), linewidth = 1.5) +         # hip to hip*
+  
+  # lumbar spine
+  geom_segment(aes(x = L5S1_X, y = L5S1_Y, xend = L1_X, yend = L1_Y), linewidth = 1.5) + # L5/S1 to T12/L1
+  
+  # thorax
+  geom_segment(aes(x = C7T1_X, y = C7T1_Y, xend = L_shoulder_X, yend = L_shoulder_Y), linewidth = 1.5) +          # C7/T1 to L shoulder
+  geom_segment(aes(x = L1_X, y = L1_Y, xend = L_shoulder_X, yend = L_shoulder_Y), linewidth = 1.5) +             # T12/L1 to L shoulder
+  geom_segment(aes(x = L1_X, y = L1_Y, xend = C7T1_X, yend = C7T1_Y), linewidth = 1.5) +                         # C7/T1 to jug notch*
+  geom_segment(aes(x = C7T1_X, y = C7T1_Y, xend = R_shoulder_X, yend = R_shoulder_Y), linewidth = 1.5) +          # C7/T1 to R shoulder
+  geom_segment(aes(x = L1_X, y = L1_Y, xend = R_shoulder_X, yend = R_shoulder_Y), linewidth = 1.5) +    
+  
+  # right leg
+  geom_segment(aes(x = R_toe_X, y = R_toe_Y, xend = R_ankle_X, yend = R_ankle_Y), linewidth = 1.5, colour = '#0800FF') +     # right foot
+  geom_segment(aes(x = R_ankle_X, y = R_ankle_Y, xend = R_knee_X, yend = R_knee_Y), linewidth = 1.5, colour = '#0800FF') +   # right shank
+  geom_segment(aes(x = R_knee_X, y = R_knee_Y, xend = R_hip_X, yend = R_hip_Y), linewidth = 1.5, colour = '#0800FF') +       # right thigh
+ 
+  # right arm
+  geom_segment(aes(x = R_shoulder_X, y = R_shoulder_Y, xend = R_elbow_X, yend = R_elbow_Y), linewidth = 1.5, colour = '#0800FF') +
+  geom_segment(aes(x = R_elbow_X, y = R_elbow_Y, xend = R_wrist_X, yend = R_wrist_Y), linewidth = 1.5, colour = '#0800FF') +
+  geom_segment(aes(x = R_wrist_X, y = R_wrist_Y, xend = R_finger_X, yend = R_finger_Y), linewidth = 1.5, colour = '#0800FF') +
+  
+  # set theme
+  theme_void() +
+  labs(x = NULL,
+       y = NULL) +
+  coord_fixed(ratio = 1)
+
+ggsave(stick_BFC_side, filename = paste0(file_name, " - BFC (side).png"), dpi = 600)
+
+# front view
+stick_BFC_front <- ggplot(df_BFC) +
+  
+  # left leg
+  geom_segment(aes(x = L_toe_Z, y = L_toe_Y, xend = L_ankle_Z, yend = L_ankle_Y), linewidth = 1.5, colour = '#FF0000') +     # left foot
+  geom_segment(aes(x = L_ankle_Z, y = L_ankle_Y, xend = L_knee_Z, yend = L_knee_Y), linewidth = 1.5, colour = '#FF0000') +   # left shank  
+  geom_segment(aes(x = L_knee_Z, y = L_knee_Y, xend = L_hip_Z, yend = L_hip_Y), linewidth = 1.5, colour = '#FF0000') +       # left thigh 
+  
+  # left arm
+  geom_segment(aes(x = L_shoulder_Z, y = L_shoulder_Y, xend = L_elbow_Z, yend = L_elbow_Y), linewidth = 1.5, colour = '#FF0000') +
+  geom_segment(aes(x = L_elbow_Z, y = L_elbow_Y, xend = L_wrist_Z, yend = L_wrist_Y), linewidth = 1.5, colour = '#FF0000') +
+  geom_segment(aes(x = L_wrist_Z, y = L_wrist_Y, xend = L_finger_Z, yend = L_finger_Y), linewidth = 1.5, colour = '#FF0000') +
+  
+  # pelvis
+  geom_segment(aes(x = R_hip_Z, y = R_hip_Y, xend = L_hip_Z, yend = L_hip_Y), linewidth = 1.5) +         # hip to hip*
+  
+  # lumbar spine
+  geom_segment(aes(x = L5S1_Z, y = L5S1_Y, xend = L1_Z, yend = L1_Y), linewidth = 1.5) + # L5/S1 to T12/L1
+  
+  # thorax
+  geom_segment(aes(x = C7T1_Z, y = C7T1_Y, xend = L_shoulder_Z, yend = L_shoulder_Y), linewidth = 1.5) +          # C7/T1 to L shoulder
+  geom_segment(aes(x = L1_Z, y = L1_Y, xend = L_shoulder_Z, yend = L_shoulder_Y), linewidth = 1.5) +             # T12/L1 to L shoulder
+  geom_segment(aes(x = L1_Z, y = L1_Y, xend = C7T1_Z, yend = C7T1_Y), linewidth = 1.5) +                         # C7/T1 to jug notch*
+  geom_segment(aes(x = C7T1_Z, y = C7T1_Y, xend = R_shoulder_Z, yend = R_shoulder_Y), linewidth = 1.5) +          # C7/T1 to R shoulder
+  geom_segment(aes(x = L1_Z, y = L1_Y, xend = R_shoulder_Z, yend = R_shoulder_Y), linewidth = 1.5) +    
+  
+  # right leg
+  geom_segment(aes(x = R_toe_Z, y = R_toe_Y, xend = R_ankle_Z, yend = R_ankle_Y), linewidth = 1.5, colour = '#0800FF') +     # right foot
+  geom_segment(aes(x = R_ankle_Z, y = R_ankle_Y, xend = R_knee_Z, yend = R_knee_Y), linewidth = 1.5, colour = '#0800FF') +   # right shank
+  geom_segment(aes(x = R_knee_Z, y = R_knee_Y, xend = R_hip_Z, yend = R_hip_Y), linewidth = 1.5, colour = '#0800FF') +       # right thigh
+ 
+  # right arm
+  geom_segment(aes(x = R_shoulder_Z, y = R_shoulder_Y, xend = R_elbow_Z, yend = R_elbow_Y), linewidth = 1.5, colour = '#0800FF') +
+  geom_segment(aes(x = R_elbow_Z, y = R_elbow_Y, xend = R_wrist_Z, yend = R_wrist_Y), linewidth = 1.5, colour = '#0800FF') +
+  geom_segment(aes(x = R_wrist_Z, y = R_wrist_Y, xend = R_finger_Z, yend = R_finger_Y), linewidth = 1.5, colour = '#0800FF') +
+  
+  # set theme
+  theme_void() +
+  labs(x = NULL,
+       y = NULL) +
+  scale_x_reverse() +  # Flip the figure horizontally
+  coord_fixed(ratio = 1)
+
+ggsave(stick_BFC_front, filename = paste0(file_name, " - BFC (front).png"), dpi = 600)
 ```
 
+```{r FFC}
+df_FFC <- df[FFC_index, ]
+
+# side view
+stick_FFC_side <- ggplot(df_FFC) +
+  
+  # left leg
+  geom_segment(aes(x = L_toe_X, y = L_toe_Y, xend = L_ankle_X, yend = L_ankle_Y), linewidth = 1.5, colour = '#FF0000') +     # left foot
+  geom_segment(aes(x = L_ankle_X, y = L_ankle_Y, xend = L_knee_X, yend = L_knee_Y), linewidth = 1.5, colour = '#FF0000') +   # left shank  
+  geom_segment(aes(x = L_knee_X, y = L_knee_Y, xend = L_hip_X, yend = L_hip_Y), linewidth = 1.5, colour = '#FF0000') +       # left thigh 
+  
+  # left arm
+  geom_segment(aes(x = L_shoulder_X, y = L_shoulder_Y, xend = L_elbow_X, yend = L_elbow_Y), linewidth = 1.5, colour = '#FF0000') +
+  geom_segment(aes(x = L_elbow_X, y = L_elbow_Y, xend = L_wrist_X, yend = L_wrist_Y), linewidth = 1.5, colour = '#FF0000') +
+  geom_segment(aes(x = L_wrist_X, y = L_wrist_Y, xend = L_finger_X, yend = L_finger_Y), linewidth = 1.5, colour = '#FF0000') +
+  
+  # pelvis
+  geom_segment(aes(x = R_hip_X, y = R_hip_Y, xend = L_hip_X, yend = L_hip_Y), linewidth = 1.5) +         # hip to hip*
+  
+  # lumbar spine
+  geom_segment(aes(x = L5S1_X, y = L5S1_Y, xend = L1_X, yend = L1_Y), linewidth = 1.5) + # L5/S1 to T12/L1
+  
+  # thorax
+  geom_segment(aes(x = C7T1_X, y = C7T1_Y, xend = L_shoulder_X, yend = L_shoulder_Y), linewidth = 1.5) +          # C7/T1 to L shoulder
+  geom_segment(aes(x = L1_X, y = L1_Y, xend = L_shoulder_X, yend = L_shoulder_Y), linewidth = 1.5) +             # T12/L1 to L shoulder
+  geom_segment(aes(x = L1_X, y = L1_Y, xend = C7T1_X, yend = C7T1_Y), linewidth = 1.5) +                         # C7/T1 to jug notch*
+  geom_segment(aes(x = C7T1_X, y = C7T1_Y, xend = R_shoulder_X, yend = R_shoulder_Y), linewidth = 1.5) +          # C7/T1 to R shoulder
+  geom_segment(aes(x = L1_X, y = L1_Y, xend = R_shoulder_X, yend = R_shoulder_Y), linewidth = 1.5) +    
+  
+  # right leg
+  geom_segment(aes(x = R_toe_X, y = R_toe_Y, xend = R_ankle_X, yend = R_ankle_Y), linewidth = 1.5, colour = '#0800FF') +     # right foot
+  geom_segment(aes(x = R_ankle_X, y = R_ankle_Y, xend = R_knee_X, yend = R_knee_Y), linewidth = 1.5, colour = '#0800FF') +   # right shank
+  geom_segment(aes(x = R_knee_X, y = R_knee_Y, xend = R_hip_X, yend = R_hip_Y), linewidth = 1.5, colour = '#0800FF') +       # right thigh
+ 
+  # right arm
+  geom_segment(aes(x = R_shoulder_X, y = R_shoulder_Y, xend = R_elbow_X, yend = R_elbow_Y), linewidth = 1.5, colour = '#0800FF') +
+  geom_segment(aes(x = R_elbow_X, y = R_elbow_Y, xend = R_wrist_X, yend = R_wrist_Y), linewidth = 1.5, colour = '#0800FF') +
+  geom_segment(aes(x = R_wrist_X, y = R_wrist_Y, xend = R_finger_X, yend = R_finger_Y), linewidth = 1.5, colour = '#0800FF') +
+  
+  # set theme
+  theme_void() +
+  labs(x = NULL,
+       y = NULL) +
+  coord_fixed(ratio = 1)
+
+ggsave(stick_FFC_side, filename = paste0(file_name, " - FFC (side).png"), dpi = 600)
+
+# front
+stick_FFC_front <- ggplot(df_FFC) +
+  
+  # left leg
+  geom_segment(aes(x = L_toe_Z, y = L_toe_Y, xend = L_ankle_Z, yend = L_ankle_Y), linewidth = 1.5, colour = '#FF0000') +     # left foot
+  geom_segment(aes(x = L_ankle_Z, y = L_ankle_Y, xend = L_knee_Z, yend = L_knee_Y), linewidth = 1.5, colour = '#FF0000') +   # left shank  
+  geom_segment(aes(x = L_knee_Z, y = L_knee_Y, xend = L_hip_Z, yend = L_hip_Y), linewidth = 1.5, colour = '#FF0000') +       # left thigh 
+  
+  # left arm
+  geom_segment(aes(x = L_shoulder_Z, y = L_shoulder_Y, xend = L_elbow_Z, yend = L_elbow_Y), linewidth = 1.5, colour = '#FF0000') +
+  geom_segment(aes(x = L_elbow_Z, y = L_elbow_Y, xend = L_wrist_Z, yend = L_wrist_Y), linewidth = 1.5, colour = '#FF0000') +
+  geom_segment(aes(x = L_wrist_Z, y = L_wrist_Y, xend = L_finger_Z, yend = L_finger_Y), linewidth = 1.5, colour = '#FF0000') +
+  
+  # pelvis
+  geom_segment(aes(x = R_hip_Z, y = R_hip_Y, xend = L_hip_Z, yend = L_hip_Y), linewidth = 1.5) +         # hip to hip*
+  
+  # lumbar spine
+  geom_segment(aes(x = L5S1_Z, y = L5S1_Y, xend = L1_Z, yend = L1_Y), linewidth = 1.5) + # L5/S1 to T12/L1
+  
+  # thorax
+  geom_segment(aes(x = C7T1_Z, y = C7T1_Y, xend = L_shoulder_Z, yend = L_shoulder_Y), linewidth = 1.5) +          # C7/T1 to L shoulder
+  geom_segment(aes(x = L1_Z, y = L1_Y, xend = L_shoulder_Z, yend = L_shoulder_Y), linewidth = 1.5) +             # T12/L1 to L shoulder
+  geom_segment(aes(x = L1_Z, y = L1_Y, xend = C7T1_Z, yend = C7T1_Y), linewidth = 1.5) +                         # C7/T1 to jug notch*
+  geom_segment(aes(x = C7T1_Z, y = C7T1_Y, xend = R_shoulder_Z, yend = R_shoulder_Y), linewidth = 1.5) +          # C7/T1 to R shoulder
+  geom_segment(aes(x = L1_Z, y = L1_Y, xend = R_shoulder_Z, yend = R_shoulder_Y), linewidth = 1.5) +    
+  
+  # right leg
+  geom_segment(aes(x = R_toe_Z, y = R_toe_Y, xend = R_ankle_Z, yend = R_ankle_Y), linewidth = 1.5, colour = '#0800FF') +     # right foot
+  geom_segment(aes(x = R_ankle_Z, y = R_ankle_Y, xend = R_knee_Z, yend = R_knee_Y), linewidth = 1.5, colour = '#0800FF') +   # right shank
+  geom_segment(aes(x = R_knee_Z, y = R_knee_Y, xend = R_hip_Z, yend = R_hip_Y), linewidth = 1.5, colour = '#0800FF') +       # right thigh
+ 
+  # right arm
+  geom_segment(aes(x = R_shoulder_Z, y = R_shoulder_Y, xend = R_elbow_Z, yend = R_elbow_Y), linewidth = 1.5, colour = '#0800FF') +
+  geom_segment(aes(x = R_elbow_Z, y = R_elbow_Y, xend = R_wrist_Z, yend = R_wrist_Y), linewidth = 1.5, colour = '#0800FF') +
+  geom_segment(aes(x = R_wrist_Z, y = R_wrist_Y, xend = R_finger_Z, yend = R_finger_Y), linewidth = 1.5, colour = '#0800FF') +
+  
+  # set theme
+  theme_void() +
+  labs(x = NULL,
+       y = NULL) +
+  scale_x_reverse() +  # Flip the figure horizontally
+  coord_fixed(ratio = 1)
+
+ggsave(stick_FFC_front, filename = paste0(file_name, " - FFC (front).png"), dpi = 600)
+
+```
+
+```{r MAW}
+df_MAW <- df[MAW_index, ]
+
+# side view
+stick_MAW_side <- ggplot(df_MAW) +
+  
+  # left leg
+  geom_segment(aes(x = L_toe_X, y = L_toe_Y, xend = L_ankle_X, yend = L_ankle_Y), linewidth = 1.5, colour = '#FF0000') +     # left foot
+  geom_segment(aes(x = L_ankle_X, y = L_ankle_Y, xend = L_knee_X, yend = L_knee_Y), linewidth = 1.5, colour = '#FF0000') +   # left shank  
+  geom_segment(aes(x = L_knee_X, y = L_knee_Y, xend = L_hip_X, yend = L_hip_Y), linewidth = 1.5, colour = '#FF0000') +       # left thigh 
+  
+  # left arm
+  geom_segment(aes(x = L_shoulder_X, y = L_shoulder_Y, xend = L_elbow_X, yend = L_elbow_Y), linewidth = 1.5, colour = '#FF0000') +
+  geom_segment(aes(x = L_elbow_X, y = L_elbow_Y, xend = L_wrist_X, yend = L_wrist_Y), linewidth = 1.5, colour = '#FF0000') +
+  geom_segment(aes(x = L_wrist_X, y = L_wrist_Y, xend = L_finger_X, yend = L_finger_Y), linewidth = 1.5, colour = '#FF0000') +
+  
+  # pelvis
+  geom_segment(aes(x = R_hip_X, y = R_hip_Y, xend = L_hip_X, yend = L_hip_Y), linewidth = 1.5) +         # hip to hip*
+  
+  # lumbar spine
+  geom_segment(aes(x = L5S1_X, y = L5S1_Y, xend = L1_X, yend = L1_Y), linewidth = 1.5) + # L5/S1 to T12/L1
+  
+  # thorax
+  geom_segment(aes(x = C7T1_X, y = C7T1_Y, xend = L_shoulder_X, yend = L_shoulder_Y), linewidth = 1.5) +          # C7/T1 to L shoulder
+  geom_segment(aes(x = L1_X, y = L1_Y, xend = L_shoulder_X, yend = L_shoulder_Y), linewidth = 1.5) +             # T12/L1 to L shoulder
+  geom_segment(aes(x = L1_X, y = L1_Y, xend = C7T1_X, yend = C7T1_Y), linewidth = 1.5) +                         # C7/T1 to jug notch*
+  geom_segment(aes(x = C7T1_X, y = C7T1_Y, xend = R_shoulder_X, yend = R_shoulder_Y), linewidth = 1.5) +          # C7/T1 to R shoulder
+  geom_segment(aes(x = L1_X, y = L1_Y, xend = R_shoulder_X, yend = R_shoulder_Y), linewidth = 1.5) +    
+  
+  # right leg
+  geom_segment(aes(x = R_toe_X, y = R_toe_Y, xend = R_ankle_X, yend = R_ankle_Y), linewidth = 1.5, colour = '#0800FF') +     # right foot
+  geom_segment(aes(x = R_ankle_X, y = R_ankle_Y, xend = R_knee_X, yend = R_knee_Y), linewidth = 1.5, colour = '#0800FF') +   # right shank
+  geom_segment(aes(x = R_knee_X, y = R_knee_Y, xend = R_hip_X, yend = R_hip_Y), linewidth = 1.5, colour = '#0800FF') +       # right thigh
+ 
+  # right arm
+  geom_segment(aes(x = R_shoulder_X, y = R_shoulder_Y, xend = R_elbow_X, yend = R_elbow_Y), linewidth = 1.5, colour = '#0800FF') +
+  geom_segment(aes(x = R_elbow_X, y = R_elbow_Y, xend = R_wrist_X, yend = R_wrist_Y), linewidth = 1.5, colour = '#0800FF') +
+  geom_segment(aes(x = R_wrist_X, y = R_wrist_Y, xend = R_finger_X, yend = R_finger_Y), linewidth = 1.5, colour = '#0800FF') +
+  
+  # set theme
+  theme_void() +
+  labs(x = NULL,
+       y = NULL) +
+  coord_fixed(ratio = 1)
+
+ggsave(stick_MAW_side, filename = paste0(file_name, " - MAW (side).png"), dpi = 600)
+
+# front view
+stick_MAW_front <- ggplot(df_MAW) +
+  
+  # left leg
+  geom_segment(aes(x = L_toe_Z, y = L_toe_Y, xend = L_ankle_Z, yend = L_ankle_Y), linewidth = 1.5, colour = '#FF0000') +     # left foot
+  geom_segment(aes(x = L_ankle_Z, y = L_ankle_Y, xend = L_knee_Z, yend = L_knee_Y), linewidth = 1.5, colour = '#FF0000') +   # left shank  
+  geom_segment(aes(x = L_knee_Z, y = L_knee_Y, xend = L_hip_Z, yend = L_hip_Y), linewidth = 1.5, colour = '#FF0000') +       # left thigh 
+  
+  # left arm
+  geom_segment(aes(x = L_shoulder_Z, y = L_shoulder_Y, xend = L_elbow_Z, yend = L_elbow_Y), linewidth = 1.5, colour = '#FF0000') +
+  geom_segment(aes(x = L_elbow_Z, y = L_elbow_Y, xend = L_wrist_Z, yend = L_wrist_Y), linewidth = 1.5, colour = '#FF0000') +
+  geom_segment(aes(x = L_wrist_Z, y = L_wrist_Y, xend = L_finger_Z, yend = L_finger_Y), linewidth = 1.5, colour = '#FF0000') +
+  
+  # pelvis
+  geom_segment(aes(x = R_hip_Z, y = R_hip_Y, xend = L_hip_Z, yend = L_hip_Y), linewidth = 1.5) +         # hip to hip*
+  
+  # lumbar spine
+  geom_segment(aes(x = L5S1_Z, y = L5S1_Y, xend = L1_Z, yend = L1_Y), linewidth = 1.5) + # L5/S1 to T12/L1
+  
+  # thorax
+  geom_segment(aes(x = C7T1_Z, y = C7T1_Y, xend = L_shoulder_Z, yend = L_shoulder_Y), linewidth = 1.5) +          # C7/T1 to L shoulder
+  geom_segment(aes(x = L1_Z, y = L1_Y, xend = L_shoulder_Z, yend = L_shoulder_Y), linewidth = 1.5) +             # T12/L1 to L shoulder
+  geom_segment(aes(x = L1_Z, y = L1_Y, xend = C7T1_Z, yend = C7T1_Y), linewidth = 1.5) +                         # C7/T1 to jug notch*
+  geom_segment(aes(x = C7T1_Z, y = C7T1_Y, xend = R_shoulder_Z, yend = R_shoulder_Y), linewidth = 1.5) +          # C7/T1 to R shoulder
+  geom_segment(aes(x = L1_Z, y = L1_Y, xend = R_shoulder_Z, yend = R_shoulder_Y), linewidth = 1.5) +    
+  
+  # right leg
+  geom_segment(aes(x = R_toe_Z, y = R_toe_Y, xend = R_ankle_Z, yend = R_ankle_Y), linewidth = 1.5, colour = '#0800FF') +     # right foot
+  geom_segment(aes(x = R_ankle_Z, y = R_ankle_Y, xend = R_knee_Z, yend = R_knee_Y), linewidth = 1.5, colour = '#0800FF') +   # right shank
+  geom_segment(aes(x = R_knee_Z, y = R_knee_Y, xend = R_hip_Z, yend = R_hip_Y), linewidth = 1.5, colour = '#0800FF') +       # right thigh
+ 
+  # right arm
+  geom_segment(aes(x = R_shoulder_Z, y = R_shoulder_Y, xend = R_elbow_Z, yend = R_elbow_Y), linewidth = 1.5, colour = '#0800FF') +
+  geom_segment(aes(x = R_elbow_Z, y = R_elbow_Y, xend = R_wrist_Z, yend = R_wrist_Y), linewidth = 1.5, colour = '#0800FF') +
+  geom_segment(aes(x = R_wrist_Z, y = R_wrist_Y, xend = R_finger_Z, yend = R_finger_Y), linewidth = 1.5, colour = '#0800FF') +
+  
+  # set theme
+  theme_void() +
+  labs(x = NULL,
+       y = NULL) +
+  scale_x_reverse() +  # Flip the figure horizontally
+  coord_fixed(ratio = 1)
+
+ggsave(stick_MAW_front, filename = paste0(file_name, " - MAW (front).png"), dpi = 600)
+```
+
+```{r BR}
+df_BR <- df[BR_index, ]
+
+# side view
+stick_BR_side <- ggplot(df_BR) +
+  
+  # left leg
+  geom_segment(aes(x = L_toe_X, y = L_toe_Y, xend = L_ankle_X, yend = L_ankle_Y), linewidth = 1.5, colour = '#FF0000') +     # left foot
+  geom_segment(aes(x = L_ankle_X, y = L_ankle_Y, xend = L_knee_X, yend = L_knee_Y), linewidth = 1.5, colour = '#FF0000') +   # left shank  
+  geom_segment(aes(x = L_knee_X, y = L_knee_Y, xend = L_hip_X, yend = L_hip_Y), linewidth = 1.5, colour = '#FF0000') +       # left thigh 
+  
+  # left arm
+  geom_segment(aes(x = L_shoulder_X, y = L_shoulder_Y, xend = L_elbow_X, yend = L_elbow_Y), linewidth = 1.5, colour = '#FF0000') +
+  geom_segment(aes(x = L_elbow_X, y = L_elbow_Y, xend = L_wrist_X, yend = L_wrist_Y), linewidth = 1.5, colour = '#FF0000') +
+  geom_segment(aes(x = L_wrist_X, y = L_wrist_Y, xend = L_finger_X, yend = L_finger_Y), linewidth = 1.5, colour = '#FF0000') +
+  
+  # pelvis
+  geom_segment(aes(x = R_hip_X, y = R_hip_Y, xend = L_hip_X, yend = L_hip_Y), linewidth = 1.5) +         # hip to hip*
+  
+  # lumbar spine
+  geom_segment(aes(x = L5S1_X, y = L5S1_Y, xend = L1_X, yend = L1_Y), linewidth = 1.5) + # L5/S1 to T12/L1
+  
+  # thorax
+  geom_segment(aes(x = C7T1_X, y = C7T1_Y, xend = L_shoulder_X, yend = L_shoulder_Y), linewidth = 1.5) +          # C7/T1 to L shoulder
+  geom_segment(aes(x = L1_X, y = L1_Y, xend = L_shoulder_X, yend = L_shoulder_Y), linewidth = 1.5) +             # T12/L1 to L shoulder
+  geom_segment(aes(x = L1_X, y = L1_Y, xend = C7T1_X, yend = C7T1_Y), linewidth = 1.5) +                         # C7/T1 to jug notch*
+  geom_segment(aes(x = C7T1_X, y = C7T1_Y, xend = R_shoulder_X, yend = R_shoulder_Y), linewidth = 1.5) +          # C7/T1 to R shoulder
+  geom_segment(aes(x = L1_X, y = L1_Y, xend = R_shoulder_X, yend = R_shoulder_Y), linewidth = 1.5) +    
+  
+  # right leg
+  geom_segment(aes(x = R_toe_X, y = R_toe_Y, xend = R_ankle_X, yend = R_ankle_Y), linewidth = 1.5, colour = '#0800FF') +     # right foot
+  geom_segment(aes(x = R_ankle_X, y = R_ankle_Y, xend = R_knee_X, yend = R_knee_Y), linewidth = 1.5, colour = '#0800FF') +   # right shank
+  geom_segment(aes(x = R_knee_X, y = R_knee_Y, xend = R_hip_X, yend = R_hip_Y), linewidth = 1.5, colour = '#0800FF') +       # right thigh
+ 
+  # right arm
+  geom_segment(aes(x = R_shoulder_X, y = R_shoulder_Y, xend = R_elbow_X, yend = R_elbow_Y), linewidth = 1.5, colour = '#0800FF') +
+  geom_segment(aes(x = R_elbow_X, y = R_elbow_Y, xend = R_wrist_X, yend = R_wrist_Y), linewidth = 1.5, colour = '#0800FF') +
+  geom_segment(aes(x = R_wrist_X, y = R_wrist_Y, xend = R_finger_X, yend = R_finger_Y), linewidth = 1.5, colour = '#0800FF') +
+  
+  # set theme
+  theme_void() +
+  labs(x = NULL,
+       y = NULL) +
+  coord_fixed(ratio = 1)
+
+ggsave(stick_BR_side, filename = paste0(file_name, " - BR (side).png"), dpi = 600)
+
+# front view
+stick_BR_front <- ggplot(df_BR) +
+  
+  # left leg
+  geom_segment(aes(x = L_toe_Z, y = L_toe_Y, xend = L_ankle_Z, yend = L_ankle_Y), linewidth = 1.5, colour = '#FF0000') +     # left foot
+  geom_segment(aes(x = L_ankle_Z, y = L_ankle_Y, xend = L_knee_Z, yend = L_knee_Y), linewidth = 1.5, colour = '#FF0000') +   # left shank  
+  geom_segment(aes(x = L_knee_Z, y = L_knee_Y, xend = L_hip_Z, yend = L_hip_Y), linewidth = 1.5, colour = '#FF0000') +       # left thigh 
+  
+  # left arm
+  geom_segment(aes(x = L_shoulder_Z, y = L_shoulder_Y, xend = L_elbow_Z, yend = L_elbow_Y), linewidth = 1.5, colour = '#FF0000') +
+  geom_segment(aes(x = L_elbow_Z, y = L_elbow_Y, xend = L_wrist_Z, yend = L_wrist_Y), linewidth = 1.5, colour = '#FF0000') +
+  geom_segment(aes(x = L_wrist_Z, y = L_wrist_Y, xend = L_finger_Z, yend = L_finger_Y), linewidth = 1.5, colour = '#FF0000') +
+  
+  # pelvis
+  geom_segment(aes(x = R_hip_Z, y = R_hip_Y, xend = L_hip_Z, yend = L_hip_Y), linewidth = 1.5) +         # hip to hip*
+  
+  # lumbar spine
+  geom_segment(aes(x = L5S1_Z, y = L5S1_Y, xend = L1_Z, yend = L1_Y), linewidth = 1.5) + # L5/S1 to T12/L1
+  
+  # thorax
+  geom_segment(aes(x = C7T1_Z, y = C7T1_Y, xend = L_shoulder_Z, yend = L_shoulder_Y), linewidth = 1.5) +          # C7/T1 to L shoulder
+  geom_segment(aes(x = L1_Z, y = L1_Y, xend = L_shoulder_Z, yend = L_shoulder_Y), linewidth = 1.5) +             # T12/L1 to L shoulder
+  geom_segment(aes(x = L1_Z, y = L1_Y, xend = C7T1_Z, yend = C7T1_Y), linewidth = 1.5) +                         # C7/T1 to jug notch*
+  geom_segment(aes(x = C7T1_Z, y = C7T1_Y, xend = R_shoulder_Z, yend = R_shoulder_Y), linewidth = 1.5) +          # C7/T1 to R shoulder
+  geom_segment(aes(x = L1_Z, y = L1_Y, xend = R_shoulder_Z, yend = R_shoulder_Y), linewidth = 1.5) +    
+  
+  # right leg
+  geom_segment(aes(x = R_toe_Z, y = R_toe_Y, xend = R_ankle_Z, yend = R_ankle_Y), linewidth = 1.5, colour = '#0800FF') +     # right foot
+  geom_segment(aes(x = R_ankle_Z, y = R_ankle_Y, xend = R_knee_Z, yend = R_knee_Y), linewidth = 1.5, colour = '#0800FF') +   # right shank
+  geom_segment(aes(x = R_knee_Z, y = R_knee_Y, xend = R_hip_Z, yend = R_hip_Y), linewidth = 1.5, colour = '#0800FF') +       # right thigh
+ 
+  # right arm
+  geom_segment(aes(x = R_shoulder_Z, y = R_shoulder_Y, xend = R_elbow_Z, yend = R_elbow_Y), linewidth = 1.5, colour = '#0800FF') +
+  geom_segment(aes(x = R_elbow_Z, y = R_elbow_Y, xend = R_wrist_Z, yend = R_wrist_Y), linewidth = 1.5, colour = '#0800FF') +
+  geom_segment(aes(x = R_wrist_Z, y = R_wrist_Y, xend = R_finger_Z, yend = R_finger_Y), linewidth = 1.5, colour = '#0800FF') +
+  
+  # set theme
+  theme_void() +
+  labs(x = NULL,
+       y = NULL) +
+  scale_x_reverse() +  # Flip the figure horizontally
+  coord_fixed(ratio = 1)
+
+ggsave(stick_BR_front, filename = paste0(file_name, " - BR (front).png"), dpi = 600)
+```
+
+```{r EFT}
+df_EFT <- df[EFT_index, ]
+
+# side view
+stick_EFT_side <- ggplot(df_EFT) +
+  
+  # left leg
+  geom_segment(aes(x = L_toe_X, y = L_toe_Y, xend = L_ankle_X, yend = L_ankle_Y), linewidth = 1.5, colour = '#FF0000') +     # left foot
+  geom_segment(aes(x = L_ankle_X, y = L_ankle_Y, xend = L_knee_X, yend = L_knee_Y), linewidth = 1.5, colour = '#FF0000') +   # left shank  
+  geom_segment(aes(x = L_knee_X, y = L_knee_Y, xend = L_hip_X, yend = L_hip_Y), linewidth = 1.5, colour = '#FF0000') +       # left thigh 
+  
+  # left arm
+  geom_segment(aes(x = L_shoulder_X, y = L_shoulder_Y, xend = L_elbow_X, yend = L_elbow_Y), linewidth = 1.5, colour = '#FF0000') +
+  geom_segment(aes(x = L_elbow_X, y = L_elbow_Y, xend = L_wrist_X, yend = L_wrist_Y), linewidth = 1.5, colour = '#FF0000') +
+  geom_segment(aes(x = L_wrist_X, y = L_wrist_Y, xend = L_finger_X, yend = L_finger_Y), linewidth = 1.5, colour = '#FF0000') +
+  
+  # pelvis
+  geom_segment(aes(x = R_hip_X, y = R_hip_Y, xend = L_hip_X, yend = L_hip_Y), linewidth = 1.5) +         # hip to hip*
+  
+  # lumbar spine
+  geom_segment(aes(x = L5S1_X, y = L5S1_Y, xend = L1_X, yend = L1_Y), linewidth = 1.5) + # L5/S1 to T12/L1
+  
+  # thorax
+  geom_segment(aes(x = C7T1_X, y = C7T1_Y, xend = L_shoulder_X, yend = L_shoulder_Y), linewidth = 1.5) +          # C7/T1 to L shoulder
+  geom_segment(aes(x = L1_X, y = L1_Y, xend = L_shoulder_X, yend = L_shoulder_Y), linewidth = 1.5) +             # T12/L1 to L shoulder
+  geom_segment(aes(x = L1_X, y = L1_Y, xend = C7T1_X, yend = C7T1_Y), linewidth = 1.5) +                         # C7/T1 to jug notch*
+  geom_segment(aes(x = C7T1_X, y = C7T1_Y, xend = R_shoulder_X, yend = R_shoulder_Y), linewidth = 1.5) +          # C7/T1 to R shoulder
+  geom_segment(aes(x = L1_X, y = L1_Y, xend = R_shoulder_X, yend = R_shoulder_Y), linewidth = 1.5) +    
+  
+  # right leg
+  geom_segment(aes(x = R_toe_X, y = R_toe_Y, xend = R_ankle_X, yend = R_ankle_Y), linewidth = 1.5, colour = '#0800FF') +     # right foot
+  geom_segment(aes(x = R_ankle_X, y = R_ankle_Y, xend = R_knee_X, yend = R_knee_Y), linewidth = 1.5, colour = '#0800FF') +   # right shank
+  geom_segment(aes(x = R_knee_X, y = R_knee_Y, xend = R_hip_X, yend = R_hip_Y), linewidth = 1.5, colour = '#0800FF') +       # right thigh
+ 
+  # right arm
+  geom_segment(aes(x = R_shoulder_X, y = R_shoulder_Y, xend = R_elbow_X, yend = R_elbow_Y), linewidth = 1.5, colour = '#0800FF') +
+  geom_segment(aes(x = R_elbow_X, y = R_elbow_Y, xend = R_wrist_X, yend = R_wrist_Y), linewidth = 1.5, colour = '#0800FF') +
+  geom_segment(aes(x = R_wrist_X, y = R_wrist_Y, xend = R_finger_X, yend = R_finger_Y), linewidth = 1.5, colour = '#0800FF') +
+  
+  # set theme
+  theme_void() +
+  labs(x = NULL,
+       y = NULL) +
+  coord_fixed(ratio = 1)
+
+ggsave(stick_EFT_side, filename = paste0(file_name, " - EFT (side).png"), dpi = 600)
+
+# front view
+stick_EFT_front <- ggplot(df_EFT) +
+  
+  # left leg
+  geom_segment(aes(x = L_toe_Z, y = L_toe_Y, xend = L_ankle_Z, yend = L_ankle_Y), linewidth = 1.5, colour = '#FF0000') +     # left foot
+  geom_segment(aes(x = L_ankle_Z, y = L_ankle_Y, xend = L_knee_Z, yend = L_knee_Y), linewidth = 1.5, colour = '#FF0000') +   # left shank  
+  geom_segment(aes(x = L_knee_Z, y = L_knee_Y, xend = L_hip_Z, yend = L_hip_Y), linewidth = 1.5, colour = '#FF0000') +       # left thigh 
+  
+  # left arm
+  geom_segment(aes(x = L_shoulder_Z, y = L_shoulder_Y, xend = L_elbow_Z, yend = L_elbow_Y), linewidth = 1.5, colour = '#FF0000') +
+  geom_segment(aes(x = L_elbow_Z, y = L_elbow_Y, xend = L_wrist_Z, yend = L_wrist_Y), linewidth = 1.5, colour = '#FF0000') +
+  geom_segment(aes(x = L_wrist_Z, y = L_wrist_Y, xend = L_finger_Z, yend = L_finger_Y), linewidth = 1.5, colour = '#FF0000') +
+  
+  # pelvis
+  geom_segment(aes(x = R_hip_Z, y = R_hip_Y, xend = L_hip_Z, yend = L_hip_Y), linewidth = 1.5) +         # hip to hip*
+  
+  # lumbar spine
+  geom_segment(aes(x = L5S1_Z, y = L5S1_Y, xend = L1_Z, yend = L1_Y), linewidth = 1.5) + # L5/S1 to T12/L1
+  
+  # thorax
+  geom_segment(aes(x = C7T1_Z, y = C7T1_Y, xend = L_shoulder_Z, yend = L_shoulder_Y), linewidth = 1.5) +          # C7/T1 to L shoulder
+  geom_segment(aes(x = L1_Z, y = L1_Y, xend = L_shoulder_Z, yend = L_shoulder_Y), linewidth = 1.5) +             # T12/L1 to L shoulder
+  geom_segment(aes(x = L1_Z, y = L1_Y, xend = C7T1_Z, yend = C7T1_Y), linewidth = 1.5) +                         # C7/T1 to jug notch*
+  geom_segment(aes(x = C7T1_Z, y = C7T1_Y, xend = R_shoulder_Z, yend = R_shoulder_Y), linewidth = 1.5) +          # C7/T1 to R shoulder
+  geom_segment(aes(x = L1_Z, y = L1_Y, xend = R_shoulder_Z, yend = R_shoulder_Y), linewidth = 1.5) +    
+  
+  # right leg
+  geom_segment(aes(x = R_toe_Z, y = R_toe_Y, xend = R_ankle_Z, yend = R_ankle_Y), linewidth = 1.5, colour = '#0800FF') +     # right foot
+  geom_segment(aes(x = R_ankle_Z, y = R_ankle_Y, xend = R_knee_Z, yend = R_knee_Y), linewidth = 1.5, colour = '#0800FF') +   # right shank
+  geom_segment(aes(x = R_knee_Z, y = R_knee_Y, xend = R_hip_Z, yend = R_hip_Y), linewidth = 1.5, colour = '#0800FF') +       # right thigh
+ 
+  # right arm
+  geom_segment(aes(x = R_shoulder_Z, y = R_shoulder_Y, xend = R_elbow_Z, yend = R_elbow_Y), linewidth = 1.5, colour = '#0800FF') +
+  geom_segment(aes(x = R_elbow_Z, y = R_elbow_Y, xend = R_wrist_Z, yend = R_wrist_Y), linewidth = 1.5, colour = '#0800FF') +
+  geom_segment(aes(x = R_wrist_Z, y = R_wrist_Y, xend = R_finger_Z, yend = R_finger_Y), linewidth = 1.5, colour = '#0800FF') +
+  
+  # set theme
+  theme_void() +
+  labs(x = NULL,
+       y = NULL) +
+  scale_x_reverse() +  # Flip the figure horizontally
+  coord_fixed(ratio = 1)
+
+ggsave(stick_EFT_front, filename = paste0(file_name, " - EFT (front).png"), dpi = 600)
+```
