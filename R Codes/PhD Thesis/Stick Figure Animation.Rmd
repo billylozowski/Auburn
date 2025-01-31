@@ -7,7 +7,7 @@ output: html_document
 
 If this is the first time using it, install gganimate -  install.packages("gganimate")
 
-```{r Setup}
+```{r Setup, include=FALSE}
 # Load the required packages from the library
 library(readr)
 library(tidyverse)
@@ -69,16 +69,16 @@ df_final <- df[BFC_index:EFT_index, ]
 ```
 
 ```{r Input event indices if known already. Be sure to change these for each trial!}
-BFC_index <- 74
-FFC_index <- 101
-MAW_index <- 103
-BR_index <- 122
-EFT_index <- 146
+BFC_index <- 53
+FFC_index <- 100
+MAW_index <- 99
+BR_index <- 116
+EFT_index <- 144
 
 # df_final <- df[(BFC_index-25):(EFT_index+25), ] use this code if you want to trim the df with a buffer to the motion's duration. Adjust buffer (+- 25) as required.
 ```
 
-```{r Animated Stick Figure - side}
+```{r Animated Stick Figure - side, include=FALSE}
 stick_side <- ggplot(df) +
   
   # left leg
@@ -140,7 +140,7 @@ stick_side <- ggplot(df) +
   anim_save(paste0(file_name, " (side).gif"), stick_side)
 ```
 
-```{r Animated Stick Figure - front}
+```{r Animated Stick Figure - front, include=FALSE}
 stick_front <- ggplot(df) +
   
   # left leg
@@ -191,7 +191,7 @@ stick_front <- ggplot(df) +
   anim_save(paste0(file_name, " (front).gif"), stick_front)
 ```  
   
-```{r BFC}
+```{r BFC, include=FALSE}
 df_BFC <- df[BFC_index, ]
 
 # side view
@@ -284,7 +284,7 @@ stick_BFC_front <- ggplot(df_BFC) +
 ggsave(stick_BFC_front, filename = paste0(file_name, " - BFC (front).png"), dpi = 600)
 ```
 
-```{r FFC}
+```{r FFC, include=FALSE}
 df_FFC <- df[FFC_index, ]
 
 # side view
@@ -378,7 +378,7 @@ ggsave(stick_FFC_front, filename = paste0(file_name, " - FFC (front).png"), dpi 
 
 ```
 
-```{r MAW}
+```{r MAW, include=FALSE}
 df_MAW <- df[MAW_index, ]
 
 # side view
@@ -471,7 +471,7 @@ stick_MAW_front <- ggplot(df_MAW) +
 ggsave(stick_MAW_front, filename = paste0(file_name, " - MAW (front).png"), dpi = 600)
 ```
 
-```{r BR}
+```{r BR, include=FALSE}
 df_BR <- df[BR_index, ]
 
 # side view
@@ -564,7 +564,7 @@ stick_BR_front <- ggplot(df_BR) +
 ggsave(stick_BR_front, filename = paste0(file_name, " - BR (front).png"), dpi = 600)
 ```
 
-```{r EFT}
+```{r EFT, include=FALSE}
 df_EFT <- df[EFT_index, ]
 
 # side view
