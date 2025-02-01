@@ -12,7 +12,7 @@ If this is the first time using it, install gganimate -  install.packages("ggani
 library(readr)
 library(tidyverse)
 library(gganimate)
-library(plotly) # this ill be used when creating a 3D figure
+library(plotly) # this will be used when creating a 3D figure
 ```
 
 ```{r Load Data}
@@ -87,11 +87,11 @@ MAW_index <- df_events[3,4] # row 3, column 4
 BR_index <- df_events[4,4]  # row 4, column 4
 EFT_index <- df_events[5,4] # row 5, column 4
 
-# df_final <- df[(BFC_index-25):(EFT_index+25), ] use this code if you want to trim the df with a buffer to the motion's duration. Adjust buffer (+- 25) as required. SAve this as a new .csv
+df_final <- df[(BFC_index-25):(EFT_index+25), ] # use this code if you want to trim the df with a buffer to the motion's duration. Adjust buffer (+- 25) as required. Save this as a new .csv
 ```
 
 ```{r Animated Stick Figure - side, include=FALSE}
-stick_side <- ggplot(df) +
+stick_side <- ggplot(df_final) +
   
   # left leg
   geom_segment(aes(x = L_toe_X, y = L_toe_Y, xend = L_ankle_X, yend = L_ankle_Y), linewidth = 1.5, colour = '#FF0000') +     # left foot
@@ -146,14 +146,14 @@ stick_side <- ggplot(df) +
   transition_time(`Sample #`)
 
   # render the stick figure animation 
-  animate(stick_side, nframes = nrow(df), fps = 50, renderer = gifski_renderer())
+  animate(stick_side, nframes = 100, fps = 30, renderer = gifski_renderer())
   
   # save the animation
   anim_save(paste0(file_name, " (side).gif"), stick_side)
 ```
 
 ```{r Animated Stick Figure - front, include=FALSE}
-stick_front <- ggplot(df) +
+stick_front <- ggplot(df_final) +
   
   # left leg
   geom_segment(aes(x = L_toe_Z, y = L_toe_Y, xend = L_ankle_Z, yend = L_ankle_Y), linewidth = 1.5, colour = '#FF0000') +     # left foot
@@ -197,7 +197,7 @@ stick_front <- ggplot(df) +
   transition_time(`Sample #`)
 
   # render the stick figure animation 
-  animate(stick_front, nframes = nrow(df), fps = 50, renderer = gifski_renderer())
+  animate(stick_front, nframes = nrow(df), fps = 30, renderer = gifski_renderer())
   
   # save the animation
   anim_save(paste0(file_name, " (front).gif"), stick_front)
