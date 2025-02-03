@@ -3,7 +3,7 @@
 
 # Load "Master File" (all participants' trials and events)
 
-rm(list = ls())
+# rm(list = ls())
 
 # Load the desired file
 file_path <- file.choose()
